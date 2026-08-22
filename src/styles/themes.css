@@ -1,0 +1,134 @@
+/* ==========================================================================
+   Velvet E-Ink & Apple Books Theme Tokens - High Contrast & Zero Ghosting
+   ========================================================================== */
+
+:root,
+[data-theme='light'] {
+  --bg-primary: #FFFFFF;
+  --bg-secondary: #F2F2F2;
+  --bg-surface: #FFFFFF;
+  --border-color: #CCCCCC;
+  --border-hover: #999999;
+  --text-primary: #000000;
+  --text-secondary: #555555;
+  --text-muted: #777777;
+  --accent-color: #000000;
+  --accent-hover: #222222;
+  --accent-subtle: rgba(0, 0, 0, 0.08);
+  --reader-bg: #FFFFFF;
+  --reader-text: #000000;
+  --card-shadow: none;
+  --book-shadow: none;
+}
+
+[data-theme='paper'] {
+  --bg-primary: #F2F2F2;
+  --bg-secondary: #E6E6E6;
+  --bg-surface: #EBEBEB;
+  --border-color: #CCCCCC;
+  --border-hover: #999999;
+  --text-primary: #000000;
+  --text-secondary: #555555;
+  --text-muted: #777777;
+  --accent-color: #222222;
+  --accent-hover: #000000;
+  --accent-subtle: rgba(0, 0, 0, 0.08);
+  --reader-bg: #F2F2F2;
+  --reader-text: #000000;
+  --card-shadow: none;
+  --book-shadow: none;
+}
+
+[data-theme='dark'] {
+  --bg-primary: #000000;
+  --bg-secondary: #121212;
+  --bg-surface: #181818;
+  --border-color: #444444;
+  --border-hover: #666666;
+  --text-primary: #FFFFFF;
+  --text-secondary: #AAAAAA;
+  --text-muted: #888888;
+  --accent-color: #FFFFFF;
+  --accent-hover: #E0E0E0;
+  --accent-subtle: rgba(255, 255, 255, 0.15);
+  --reader-bg: #000000;
+  --reader-text: #FFFFFF;
+  --card-shadow: none;
+  --book-shadow: none;
+}
+
+[data-theme='amoled'] {
+  --bg-primary: #000000;
+  --bg-secondary: #111111;
+  --bg-surface: #161616;
+  --border-color: #333333;
+  --border-hover: #555555;
+  --text-primary: #FFFFFF;
+  --text-secondary: #AAAAAA;
+  --text-muted: #777777;
+  --accent-color: #FFFFFF;
+  --accent-hover: #CCCCCC;
+  --accent-subtle: rgba(255, 255, 255, 0.15);
+  --reader-bg: #000000;
+  --reader-text: #FFFFFF;
+  --card-shadow: none;
+  --book-shadow: none;
+}
+
+[data-theme='sepia'] {
+  --bg-primary: #F4ECD8;
+  --bg-secondary: #EBE0C8;
+  --bg-surface: #F0E6CE;
+  --border-color: #D6C8AA;
+  --border-hover: #C2B290;
+  --text-primary: #1A1A1A;
+  --text-secondary: #5C5243;
+  --text-muted: #807360;
+  --accent-color: #8C581E;
+  --accent-hover: #6E4211;
+  --accent-subtle: rgba(140, 88, 30, 0.12);
+  --reader-bg: #F4ECD8;
+  --reader-text: #1A1A1A;
+  --card-shadow: none;
+  --book-shadow: none;
+}
+
+[data-theme='nord'] {
+  --bg-primary: #2E3440;
+  --bg-secondary: #3B4252;
+  --bg-surface: #434C5E;
+  --border-color: #4C566A;
+  --border-hover: #5E81AC;
+  --text-primary: #ECEFF4;
+  --text-secondary: #D8DEE9;
+  --text-muted: #88C0D0;
+  --accent-color: #88C0D0;
+  --accent-hover: #81A1C1;
+  --accent-subtle: rgba(136, 192, 208, 0.15);
+  --reader-bg: #2E3440;
+  --reader-text: #ECEFF4;
+  --card-shadow: none;
+  --book-shadow: none;
+}
+
+.velvet-transition {
+  transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Custom Minimalist Apple Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-hover);
+}
