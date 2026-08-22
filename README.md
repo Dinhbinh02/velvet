@@ -89,7 +89,7 @@ Velvet uses a **2-Tier Local-First Storage Pattern**:
 ### 👥 For Users (Install Extension into Chrome)
 
 1. **Download the latest release**:
-   * Download the `velvet-chrome-extension.zip` from the [Releases](https://github.com/your-username/velvet-ebook-reader/releases) page and unzip it (or build it from source below).
+   * Download the `velvet-chrome-extension.zip` from the [Releases](https://github.com/Dinhbinh02/velvet/releases) page and unzip it (or build it from source below).
 2. **Load into Google Chrome**:
    * Open Chrome and navigate to `chrome://extensions` in the address bar.
    * Enable the **Developer mode** toggle in the top-right corner.
@@ -108,8 +108,8 @@ Velvet uses a **2-Tier Local-First Storage Pattern**:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-username/velvet-ebook-reader.git
-cd velvet-ebook-reader
+git clone https://github.com/Dinhbinh02/velvet.git
+cd velvet
 
 # 2. Install dependencies
 npm install
