@@ -76,19 +76,22 @@ export class R2StorageService {
       // 3. Fallback: Upload to Supabase Storage bucket 'books'
       const supabase = await SupabaseService.getClient();
       if (supabase) {
-        const { error } = await supabase.storage.from('books').upload(r2Key, file, {
+        const cleanKey = r2Key.replace(/^books\//, '');
+        const { error } = await supabase.storage.from('books').upload(cleanKey, file, {
           upsert: true,
           contentType: 'application/epub+zip',
         });
         if (error) {
-          console.warn('[Supabase Storage Upload Error]:', error);
+          console.warn('[Supabase Storage Upload Error]:', error.message || error);
         } else {
-          console.log(`[Supabase Storage] Uploaded ${r2Key} successfully!`);
-          return r2Key;
+          console.log(`[Supabase Storage] Uploaded ${cleanKey} successfully!`);
+          return cleanKey;
         }
       }
-    } catch (err) {
-      console.warn(`Failed to upload book ${bookId} to cloud:`, err);
+    } catch (err: any) {
+      if (err?.name !== 'NotFoundError') {
+        console.warn(`Failed to upload book ${bookId} to cloud:`, err);
+      }
     }
     return '';
   }
@@ -99,11 +102,12 @@ export class R2StorageService {
   public static async downloadBook(bookId: string, r2Key: string): Promise<boolean> {
     try {
       let fileBlob: Blob | null = null;
+      const cleanKey = r2Key.replace(/^books\//, '');
 
       // 1. Download via Native Cloudflare Pages R2 endpoint
       try {
-        const directRes = await fetch(`/api/r2/${r2Key}`);
-        if (directRes.ok) {
+        const directRes = await fetch(`/api/r2/books/${cleanKey}`);
+        if (directRes.ok && directRes.status === 200) {
           fileBlob = await directRes.blob();
         }
       } catch {}
@@ -112,9 +116,9 @@ export class R2StorageService {
       if (!fileBlob) {
         const r2Config = await SupabaseService.getR2Config();
         if (r2Config?.publicDomain) {
-          const publicUrl = `${r2Config.publicDomain.replace(/\/$/, '')}/${r2Key}`;
+          const publicUrl = `${r2Config.publicDomain.replace(/\/$/, '')}/${cleanKey}`;
           const res = await fetch(publicUrl);
-          if (res.ok) {
+          if (res.ok && res.status === 200) {
             fileBlob = await res.blob();
           }
         }
@@ -124,20 +128,28 @@ export class R2StorageService {
       if (!fileBlob) {
         const supabase = await SupabaseService.getClient();
         if (supabase) {
-          try {
-            const { data: pubData } = supabase.storage.from('books').getPublicUrl(r2Key);
-            if (pubData?.publicUrl) {
-              const res = await fetch(pubData.publicUrl);
-              if (res.ok) {
-                fileBlob = await res.blob();
+          const keysToTry = [cleanKey, `books/${cleanKey}`, `${bookId}.epub`];
+          for (const key of keysToTry) {
+            if (fileBlob) break;
+            try {
+              const { data: pubData } = supabase.storage.from('books').getPublicUrl(key);
+              if (pubData?.publicUrl) {
+                const res = await fetch(pubData.publicUrl);
+                if (res.ok && res.status === 200 && (res.headers.get('content-type')?.includes('epub') || res.headers.get('content-type')?.includes('zip') || res.headers.get('content-type')?.includes('octet-stream'))) {
+                  fileBlob = await res.blob();
+                  break;
+                }
               }
-            }
-          } catch {}
+            } catch {}
 
-          if (!fileBlob) {
-            const { data, error } = await supabase.storage.from('books').download(r2Key);
-            if (!error && data) {
-              fileBlob = data;
+            if (!fileBlob) {
+              try {
+                const { data, error } = await supabase.storage.from('books').download(key);
+                if (!error && data) {
+                  fileBlob = data;
+                  break;
+                }
+              } catch {}
             }
           }
         }
