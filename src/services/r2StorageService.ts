@@ -76,20 +76,16 @@ export class R2StorageService {
       // 3. Fallback: Upload to Supabase Storage bucket 'books'
       const supabase = await SupabaseService.getClient();
       if (supabase) {
-        const { data: existingFiles } = await supabase.storage.from('books').list('books', {
-          search: `${hash}.epub`,
-        });
-
-        if (existingFiles && existingFiles.length > 0) {
-          console.log(`[Deduplication] Book ${hash} already exists in storage, instant link!`);
-          return r2Key;
-        }
-
         const { error } = await supabase.storage.from('books').upload(r2Key, file, {
           upsert: true,
           contentType: 'application/epub+zip',
         });
-        if (!error) return r2Key;
+        if (error) {
+          console.warn('[Supabase Storage Upload Error]:', error);
+        } else {
+          console.log(`[Supabase Storage] Uploaded ${r2Key} successfully!`);
+          return r2Key;
+        }
       }
     } catch (err) {
       console.warn(`Failed to upload book ${bookId} to cloud:`, err);

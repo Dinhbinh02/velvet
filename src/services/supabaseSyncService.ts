@@ -200,11 +200,23 @@ export class SupabaseSyncService {
       if (cloudBooks?.length) {
         for (const b of cloudBooks) {
           const exists = await db.books.get(b.id);
+          let coverBlob: Blob | undefined = exists?.coverImage;
+
+          if (!coverBlob && b.cover_url) {
+            try {
+              const res = await fetch(b.cover_url);
+              if (res.ok) {
+                coverBlob = await res.blob();
+              }
+            } catch {}
+          }
+
           if (!exists) {
             await db.books.put({
               id: b.id,
               title: b.title,
               author: b.author,
+              coverImage: coverBlob,
               opfsPath: `books/${b.id}.epub`,
               fileSize: b.file_size,
               format: b.format,
@@ -213,13 +225,16 @@ export class SupabaseSyncService {
               lastReadAt: b.last_read_at,
               isFinished: b.is_finished,
             });
+
             // Download EPUB binary from R2/Storage if not present in OPFS and extract cover
             try {
               const file = await OPFSStorageService.getBookFile(b.id);
-              const { EPUBParserService } = await import('./epubParser');
-              const meta = await EPUBParserService.parseMetadata(file);
-              if (meta.coverImage) {
-                await db.books.update(b.id, { coverImage: meta.coverImage });
+              if (!coverBlob) {
+                const { EPUBParserService } = await import('./epubParser');
+                const meta = await EPUBParserService.parseMetadata(file);
+                if (meta.coverImage) {
+                  await db.books.update(b.id, { coverImage: meta.coverImage });
+                }
               }
             } catch {
               const r2Key = b.r2_key || `books/${b.id}.epub`;
@@ -227,14 +242,18 @@ export class SupabaseSyncService {
               if (downloaded) {
                 try {
                   const file = await OPFSStorageService.getBookFile(b.id);
-                  const { EPUBParserService } = await import('./epubParser');
-                  const meta = await EPUBParserService.parseMetadata(file);
-                  if (meta.coverImage) {
-                    await db.books.update(b.id, { coverImage: meta.coverImage });
+                  if (!coverBlob) {
+                    const { EPUBParserService } = await import('./epubParser');
+                    const meta = await EPUBParserService.parseMetadata(file);
+                    if (meta.coverImage) {
+                      await db.books.update(b.id, { coverImage: meta.coverImage });
+                    }
                   }
                 } catch {}
               }
             }
+          } else if (!exists.coverImage && coverBlob) {
+            await db.books.update(b.id, { coverImage: coverBlob });
           }
         }
       }
@@ -332,19 +351,36 @@ export class SupabaseSyncService {
       }
 
       // 4. Push Local -> Cloud (Postgres UPSERT)
-      const booksToUpsert = localBooks.map((b) => ({
-        id: b.id,
-        user_id: user.id,
-        title: b.title,
-        author: b.author || '',
-        file_size: b.fileSize || 0,
-        format: b.format || 'epub',
-        total_chapters: b.totalChapters || 0,
-        r2_key: b.fileHash ? `books/${b.fileHash}.epub` : `books/${b.id}.epub`,
-        added_at: b.addedAt || Date.now(),
-        last_read_at: b.lastReadAt || Date.now(),
-        is_finished: b.isFinished || false,
-      }));
+      const booksToUpsert = await Promise.all(
+        localBooks.map(async (b) => {
+          let coverUrl = '';
+          if (b.coverImage) {
+            try {
+              coverUrl = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve((reader.result as string) || '');
+                reader.onerror = () => resolve('');
+                reader.readAsDataURL(b.coverImage as Blob);
+              });
+            } catch {}
+          }
+
+          return {
+            id: b.id,
+            user_id: user.id,
+            title: b.title,
+            author: b.author || '',
+            file_size: b.fileSize || 0,
+            format: b.format || 'epub',
+            total_chapters: b.totalChapters || 0,
+            r2_key: b.fileHash ? `books/${b.fileHash}.epub` : `books/${b.id}.epub`,
+            cover_url: coverUrl || undefined,
+            added_at: b.addedAt || Date.now(),
+            last_read_at: b.lastReadAt || Date.now(),
+            is_finished: b.isFinished || false,
+          };
+        })
+      );
       if (booksToUpsert.length) {
         await supabase.from('books').upsert(booksToUpsert);
         // Upload local book files to Cloud Storage in background
