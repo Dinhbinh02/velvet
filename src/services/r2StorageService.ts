@@ -128,9 +128,21 @@ export class R2StorageService {
       if (!fileBlob) {
         const supabase = await SupabaseService.getClient();
         if (supabase) {
-          const { data, error } = await supabase.storage.from('books').download(r2Key);
-          if (!error && data) {
-            fileBlob = data;
+          try {
+            const { data: pubData } = supabase.storage.from('books').getPublicUrl(r2Key);
+            if (pubData?.publicUrl) {
+              const res = await fetch(pubData.publicUrl);
+              if (res.ok) {
+                fileBlob = await res.blob();
+              }
+            }
+          } catch {}
+
+          if (!fileBlob) {
+            const { data, error } = await supabase.storage.from('books').download(r2Key);
+            if (!error && data) {
+              fileBlob = data;
+            }
           }
         }
       }
