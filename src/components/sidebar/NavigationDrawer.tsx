@@ -271,18 +271,18 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
           </span>
         </div>
 
-        <div className="flex items-center shrink-0">
+        <div className="flex items-center gap-0.5 shrink-0">
           {/* AI Generate Summary Button */}
           <button
             type="button"
             disabled={isGenerating}
             onClick={handleGenerateSummary}
-            className={`p-1 rounded-md transition-all cursor-pointer flex items-center justify-center ${
+            className={`w-7 h-7 sm:w-6 sm:h-6 rounded-lg transition-all cursor-pointer flex items-center justify-center shrink-0 ${
               isGenerating
                 ? 'opacity-100 text-[var(--accent-color)] bg-[var(--accent-subtle)] animate-pulse'
                 : hasGenerated
                 ? 'bg-emerald-500/15 text-emerald-500 opacity-100'
-                : 'opacity-0 group-hover:opacity-100 hover:bg-black hover:text-white text-[var(--text-muted)]'
+                : 'opacity-70 sm:opacity-0 sm:group-hover:opacity-100 hover:bg-[var(--accent-subtle)] hover:text-[var(--accent-color)] text-[var(--text-muted)] hover:opacity-100 active:scale-95'
             }`}
             title={
               isGenerating
@@ -293,9 +293,9 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
             }
           >
             {isGenerating ? (
-              <Loader2 className="w-3 h-3 animate-spin text-[var(--accent-color)]" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent-color)]" />
             ) : hasGenerated ? (
-              <Check className="w-3 h-3 text-emerald-500 animate-in zoom-in-50" />
+              <Check className="w-3.5 h-3.5 text-emerald-500 animate-in zoom-in-50" />
             ) : (
               <Bot className="w-3.5 h-3.5" />
             )}
@@ -308,10 +308,10 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
                 e.stopPropagation();
                 setIsOpen(!isOpen);
               }}
-              className="p-1 rounded-md hover:bg-black hover:text-white text-[var(--text-muted)] transition-all shrink-0 cursor-pointer"
+              className="w-7 h-7 sm:w-6 sm:h-6 rounded-lg hover:bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all shrink-0 cursor-pointer flex items-center justify-center active:scale-95"
               title={isOpen ? 'Collapse' : 'Expand'}
             >
-              {isOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+              {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
             </button>
           )}
         </div>
