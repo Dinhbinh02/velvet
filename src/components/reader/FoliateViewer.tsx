@@ -442,6 +442,10 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
       * {
         scrollbar-width: thin !important;
         scrollbar-color: rgba(130, 120, 110, 0.3) transparent !important;
+        -webkit-touch-callout: none !important;
+      }
+      html, body, p, div, span, h1, h2, h3, h4, h5, h6, li, blockquote, a, section, article {
+        -webkit-touch-callout: none !important;
       }
       /* Velvet Chapter AI Summary Card exact settings font size */
       .velvet-chapter-summary-card {
@@ -1099,6 +1103,11 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
             });
           }
         }
+
+        // Prevent default browser context menu / callout on touch and right-click
+        doc.addEventListener('contextmenu', (e: Event) => {
+          e.preventDefault();
+        });
 
         // Dismiss comment modal if user clicks inside the book document
         doc.addEventListener('mousedown', () => {

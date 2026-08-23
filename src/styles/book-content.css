@@ -19,6 +19,7 @@ html, body {
   padding: 0 1.5rem !important;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-touch-callout: none !important;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
