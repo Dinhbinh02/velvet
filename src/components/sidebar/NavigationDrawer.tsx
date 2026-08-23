@@ -30,6 +30,7 @@ interface TOCItemNodeProps {
   settings?: Partial<IReaderSettings>;
   onNavigate: (cfiOrHref: string) => void;
   onClose: () => void;
+  onOpenSettings?: () => void;
 }
 
 const TOCItemNode: React.FC<TOCItemNodeProps> = ({
@@ -41,6 +42,7 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
   settings,
   onNavigate,
   onClose,
+  onOpenSettings,
 }) => {
   const hasSubitems = Array.isArray(item.subitems) && item.subitems.length > 0;
   const [isOpen, setIsOpen] = useState(true);
@@ -75,6 +77,13 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
   const handleGenerateSummary = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isGenerating) return;
+
+    if (!settings?.geminiApiKey?.trim()) {
+      if (onOpenSettings) {
+        onOpenSettings();
+      }
+      return;
+    }
 
     setIsGenerating(true);
     try {
@@ -390,6 +399,7 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
               settings={settings}
               onNavigate={onNavigate}
               onClose={onClose}
+              onOpenSettings={onOpenSettings}
             />
           ))}
         </div>
@@ -409,6 +419,7 @@ interface NavigationDrawerProps {
   onNavigate: (cfiOrHref: string) => void;
   onExportNotes?: () => void;
   onClose: () => void;
+  onOpenSettings?: () => void;
 }
 
 export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
@@ -422,6 +433,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   onNavigate,
   onExportNotes,
   onClose,
+  onOpenSettings,
 }) => {
   const [activeTab, setActiveTab] = useState<'toc' | 'notes' | 'comments'>('toc');
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
@@ -561,14 +573,14 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   };
 
   return (
-    <aside className="w-80 sm:w-84 h-full shrink-0 bg-[var(--bg-surface)] border-r border-[var(--border-color)] flex flex-col select-none z-30 shadow-2xl md:shadow-none animate-in slide-in-from-left duration-200">
+    <aside className="w-[80vw] max-w-[320px] sm:w-80 md:w-84 h-full shrink-0 bg-[var(--bg-surface)] border-r border-[var(--border-color)] flex flex-col select-none z-30 shadow-2xl md:shadow-none animate-in slide-in-from-left duration-200">
       {/* Unified Compact Sidebar Header (Matching h-14 Height with Main Topbar) */}
-      <div className="h-14 px-3 flex items-center justify-between gap-1.5 border-b border-[var(--border-color)] bg-[var(--bg-surface)] shrink-0">
+      <div className="h-14 px-2.5 sm:px-3 flex items-center justify-between gap-1 border-b border-[var(--border-color)] bg-[var(--bg-surface)] shrink-0">
         {/* Segmented 3-in-1 Tabs Switcher */}
         <div className="flex-1 flex items-center bg-[var(--bg-secondary)] p-0.5 rounded-xl text-xs font-semibold">
           <button
             onClick={() => setActiveTab('toc')}
-            className={`flex-1 py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
+            className={`flex-1 py-1.5 px-1.5 sm:px-2 rounded-lg transition-all flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap cursor-pointer ${
               activeTab === 'toc'
                 ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm font-bold border border-[var(--border-color)]'
                 : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -581,7 +593,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
 
           <button
             onClick={() => setActiveTab('notes')}
-            className={`flex-1 py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
+            className={`flex-1 py-1.5 px-1.5 sm:px-2 rounded-lg transition-all flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap cursor-pointer ${
               activeTab === 'notes'
                 ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm font-bold border border-[var(--border-color)]'
                 : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -595,7 +607,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
 
           <button
             onClick={() => setActiveTab('comments')}
-            className={`flex-1 py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
+            className={`flex-1 py-1.5 px-1.5 sm:px-2 rounded-lg transition-all flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap cursor-pointer ${
               activeTab === 'comments'
                 ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm font-bold border border-[var(--border-color)]'
                 : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -603,7 +615,8 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
             title="Comments & Annotations"
           >
             <MessageSquare className="w-3.5 h-3.5 shrink-0" />
-            <span>Comments</span>
+            <span className="hidden xs:inline sm:inline">Comments</span>
+            <span className="xs:hidden sm:hidden">Comm</span>
             <span className="text-[10px] opacity-70">({comments.length})</span>
           </button>
         </div>
@@ -626,6 +639,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
                   settings={settings}
                   onNavigate={onNavigate}
                   onClose={onClose}
+                  onOpenSettings={onOpenSettings}
                 />
               ))
             ) : (

@@ -35,21 +35,7 @@ export class GoogleAuthService {
    * Acquire Google OAuth access token with automatic fallback
    */
   public static async getAccessToken(interactive: boolean = true): Promise<string> {
-    if (this.cachedToken) {
-      return this.cachedToken;
-    }
-
-    // Check local storage for persistent token / session
-    const stored = await chrome.storage.local.get(['velvet_google_token', 'velvet_google_user']);
-    if (stored.velvet_google_token) {
-      this.cachedToken = stored.velvet_google_token;
-      if (stored.velvet_google_user) {
-        this.cachedUser = stored.velvet_google_user;
-      }
-      return this.cachedToken!;
-    }
-
-    // 1. Try Native Chrome Identity (getAuthToken)
+    // 1. Try Native Chrome Identity first (Chrome natively manages token expiry & refresh)
     if (this.isStandardChrome() && chrome.identity && chrome.identity.getAuthToken) {
       try {
         const token = await new Promise<string>((resolve, reject) => {
@@ -69,12 +55,33 @@ export class GoogleAuthService {
         if (token) {
           this.cachedToken = token;
           await chrome.storage.local.set({ velvet_google_token: token });
-          await this.fetchUserInfo(token);
           return token;
         }
       } catch (chromeErr: any) {
+        // If non-interactive failed, don't crash unless interactive was requested
+        if (!interactive) {
+          throw new Error('401_UNAUTHORIZED');
+        }
         console.warn('Native getAuthToken failed, falling back to launchWebAuthFlow:', chromeErr);
       }
+    }
+
+    if (this.cachedToken) {
+      return this.cachedToken;
+    }
+
+    // Check local storage for persistent token / session
+    const stored = await chrome.storage.local.get(['velvet_google_token', 'velvet_google_user']);
+    if (stored.velvet_google_token) {
+      this.cachedToken = stored.velvet_google_token;
+      if (stored.velvet_google_user) {
+        this.cachedUser = stored.velvet_google_user;
+      }
+      return this.cachedToken!;
+    }
+
+    if (!interactive) {
+      throw new Error('401_UNAUTHORIZED');
     }
 
     // 2. Fallback to Web App launchWebAuthFlow (for Edge and other browsers)
@@ -152,6 +159,23 @@ export class GoogleAuthService {
       return this.cachedUser;
     }
     return null;
+  }
+
+  /**
+   * Invalidate cached token when Google returns 401 Unauthorized
+   */
+  public static async invalidateCachedToken(): Promise<void> {
+    if (this.cachedToken) {
+      try {
+        if (chrome.identity && chrome.identity.removeCachedAuthToken) {
+          await new Promise<void>((resolve) => {
+            chrome.identity.removeCachedAuthToken({ token: this.cachedToken! }, () => resolve());
+          });
+        }
+      } catch {}
+    }
+    this.cachedToken = null;
+    await chrome.storage.local.remove(['velvet_google_token']);
   }
 
   /**

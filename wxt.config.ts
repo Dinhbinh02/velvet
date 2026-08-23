@@ -35,7 +35,6 @@ export default defineConfig({
       'unlimitedStorage',
       'sidePanel',
       'contextMenus',
-      'declarativeNetRequest',
       'scripting',
       'identity',
     ],

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   BookOpen,
-  Library,
   List,
   Search,
   Maximize2,
@@ -10,6 +9,7 @@ import {
   Settings,
   UploadCloud,
   BookPlus,
+  Waves,
 } from 'lucide-react';
 import { useBooks, useBookDetails } from '@/src/hooks/useBooks';
 import { useReaderSettings } from '@/src/hooks/useReaderSettings';
@@ -18,6 +18,8 @@ import { AddBookCard } from '@/src/components/shelf/AddBookCard';
 import { ReadingNowCard } from '@/src/components/shelf/ReadingNowCard';
 import { ShelfHeroBanner } from '@/src/components/shelf/ShelfHeroBanner';
 import { BookShelfHeader, type BookStatusFilter, type BookSortOption } from '@/src/components/shelf/BookShelfHeader';
+import { AmbientSoundModal } from '@/src/components/shelf/AmbientSoundModal';
+import { AmbientSoundService } from '@/src/services/ambientSoundService';
 import { FoliateViewer } from '@/src/components/reader/FoliateViewer';
 import { TypographyDrawer } from '@/src/components/settings/TypographyDrawer';
 import { NavigationDrawer } from '@/src/components/sidebar/NavigationDrawer';
@@ -44,10 +46,19 @@ export const ReaderApp: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTargetSection, setSettingsTargetSection] = useState<string | null>(null);
   const [syncOpen, setSyncOpen] = useState(false);
+  const [ambientModalOpen, setAmbientModalOpen] = useState(false);
+  const [ambientState, setAmbientState] = useState(() => AmbientSoundService.getState());
   const [googleUser, setGoogleUser] = useState<IGoogleUserInfo | null>(null);
   const [ttsOpen, setTtsOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    return AmbientSoundService.subscribe(() => {
+      setAmbientState(AmbientSoundService.getState());
+    });
+  }, []);
 
   // Shelf Search, Filter & Sort State
   const [searchQuery, setSearchQuery] = useState('');
@@ -153,6 +164,16 @@ export const ReaderApp: React.FC = () => {
     }
   };
 
+  const handleCloseWordModal = React.useCallback(() => {
+    setWordExplanation(null);
+    setWordLookupError(null);
+  }, []);
+
+  const handleOpenGeminiSettings = React.useCallback(() => {
+    setSettingsTargetSection('gemini');
+    setSettingsOpen(true);
+  }, []);
+
   // Query notes for active book
   const activeNotes = useLiveQuery(
     () => (activeBookId ? db.notes.where('bookId').equals(activeBookId).reverse().sortBy('createdAt') : []),
@@ -226,10 +247,10 @@ export const ReaderApp: React.FC = () => {
     return () => clearInterval(syncInterval);
   }, []);
 
-  // Auto-restore sidebar when screen width expands back to desktop view (>= 768px)
+  // Auto-restore sidebar when screen width expands back to desktop view (>= 1024px)
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth >= 768) {
+      if (window.innerWidth >= 1024) {
         setSidebarOpen(true);
       }
     };
@@ -238,28 +259,51 @@ export const ReaderApp: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Check URL params for bookId
+  // Check URL params for bookId & listen to popstate
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const bookIdParam = params.get('bookId');
-    if (bookIdParam) {
-      setActiveBookId(bookIdParam);
-      setViewMode('reader');
-      setSidebarOpen(true);
-    }
+    const handleLocationChange = () => {
+      const params = new URLSearchParams(window.location.search);
+      const bookIdParam = params.get('bookId');
+      if (bookIdParam) {
+        setActiveBookId(bookIdParam);
+        setViewMode('reader');
+        setSidebarOpen(true);
+      } else {
+        setActiveBookId(null);
+        setViewMode('shelf');
+      }
+    };
+
+    handleLocationChange();
+    window.addEventListener('popstate', handleLocationChange);
+    return () => window.removeEventListener('popstate', handleLocationChange);
   }, []);
 
   const handleOpenBook = (bookId: string) => {
     setActiveBookId(bookId);
     setViewMode('reader');
     setSidebarOpen(true);
+    // Update browser URL to include ?bookId=...
+    const url = new URL(window.location.href);
+    url.searchParams.set('bookId', bookId);
+    window.history.pushState({}, '', url.toString());
+  };
+
+  const handleBackToShelf = () => {
+    setActiveBookId(null);
+    setViewMode('shelf');
+    // Remove ?bookId from URL
+    const url = new URL(window.location.href);
+    url.searchParams.delete('bookId');
+    window.history.pushState({}, '', url.toString());
+    // Trigger auto sync when finishing a reading session
+    GoogleDriveSyncService.triggerAutoSync(2000);
   };
 
   const handleDeleteBook = async (bookId: string) => {
     await BookService.deleteBookCompletely(bookId);
     if (activeBookId === bookId) {
-      setActiveBookId(null);
-      setViewMode('shelf');
+      handleBackToShelf();
     }
   };
 
@@ -314,70 +358,36 @@ export const ReaderApp: React.FC = () => {
       className="w-full h-full flex flex-col bg-[var(--bg-primary)] text-[var(--text-primary)] font-sans select-none velvet-transition overflow-hidden relative"
     >
       {/* Clean macOS / Apple Books Top Bar */}
-      <header className="h-14 px-3 sm:px-4 flex items-center justify-between border-b border-[var(--border-color)] bg-[var(--bg-surface)] shrink-0 z-30 select-none">
-        {/* Left: Brand & Main Navigation Segmented Control */}
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <img
-              src="/icons/icon512.png"
-              alt="Velvet"
-              className="w-7 h-7 rounded-lg shadow-sm object-cover"
-            />
-            <span className="font-bold tracking-tight text-sm text-[var(--text-primary)] hidden md:inline-block">
-              Velvet
-            </span>
-          </div>
+      <header className="h-14 px-2 sm:px-4 flex items-center justify-between gap-2 border-b border-[var(--border-color)] bg-[var(--bg-surface)] shrink-0 z-30 select-none overflow-hidden">
+        {/* Left: Brand Logo & Title (Click to return home) */}
+        <button
+          type="button"
+          onClick={handleBackToShelf}
+          className="flex items-center gap-2 cursor-pointer p-1 -ml-1 rounded-xl hover:bg-[var(--bg-secondary)] transition-all group shrink-0"
+          title="Velvet Home"
+        >
+          <img
+            src="/icons/icon512.png"
+            alt="Velvet"
+            className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg shadow-sm object-cover shrink-0 group-hover:scale-105 transition-transform"
+          />
+          <span className="font-bold tracking-tight text-sm text-[var(--text-primary)]">
+            Velvet
+          </span>
+        </button>
 
-          {/* Segmented Mode Switcher */}
-          <div className="flex items-center bg-[var(--bg-secondary)] border border-[var(--border-color)] p-0.5 rounded-xl text-xs font-medium">
-            <button
-              onClick={() => {
-                setViewMode('shelf');
-                // Trigger auto sync when finishing a reading session
-                GoogleDriveSyncService.triggerAutoSync(2000);
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                viewMode === 'shelf'
-                  ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm font-semibold border border-[var(--border-color)]'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <Library className="w-3.5 h-3.5" />
-              <span>Library ({count})</span>
-            </button>
-
-            <button
-              onClick={() => {
-                if (activeBookId || books.length > 0) {
-                  if (!activeBookId && books.length > 0) setActiveBookId(books[0].id);
-                  setViewMode('reader');
-                }
-              }}
-              disabled={books.length === 0}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                viewMode === 'reader'
-                  ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm font-semibold border border-[var(--border-color)]'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-              <span>Reading</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Center: Contextual Book & Chapter Title + Progress (Only in Reader Mode) */}
+        {/* Center: Contextual Book & Chapter Title + Progress (Only in Reader Mode on wide screens) */}
         {viewMode === 'reader' && activeBook && (
-          <div className="hidden md:flex flex-col items-center max-w-sm xl:max-w-md mx-4 truncate">
+          <div className="hidden md:flex flex-col items-center max-w-xs lg:max-w-sm xl:max-w-md mx-2 truncate shrink min-w-0">
             <span className="text-xs font-bold text-[var(--text-primary)] truncate max-w-full">
               {activeBook.title}
             </span>
             <div className="flex items-center gap-1.5 text-[10px] text-[var(--text-muted)] font-medium truncate max-w-full">
               {currentLocation.chapterTitle && (
-                <span className="truncate max-w-[200px]">{currentLocation.chapterTitle}</span>
+                <span className="truncate max-w-[160px] lg:max-w-[200px]">{currentLocation.chapterTitle}</span>
               )}
               {currentLocation.chapterTitle && <span>•</span>}
-              <span className="text-[var(--accent-color)] font-bold">
+              <span className="text-[var(--accent-color)] font-bold shrink-0">
                 {Math.round(currentLocation.percentage * 100)}%
               </span>
             </div>
@@ -385,7 +395,7 @@ export const ReaderApp: React.FC = () => {
         )}
 
         {/* Right: Reading Tools + User Profile / Auth Slot */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
           {viewMode === 'reader' && (
             <>
               {/* In-Book Search */}
@@ -394,13 +404,15 @@ export const ReaderApp: React.FC = () => {
                   setSearchOpen(!searchOpen);
                   if (settingsOpen) setSettingsOpen(false);
                 }}
-                className={`p-2 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer ${
+                className={`p-1.5 sm:p-2 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer ${
                   searchOpen ? 'bg-[var(--accent-subtle)] text-[var(--accent-color)] border-[var(--accent-color)]' : ''
                 }`}
                 title="Search in Book"
               >
-                <Search className="w-4 h-4" />
-              </button>              {/* Text-To-Speech (AI Voice Reader) */}
+                <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              </button>
+
+              {/* Text-To-Speech (AI Voice Reader) */}
               <button
                 onClick={() => {
                   if (ttsOpen) {
@@ -410,12 +422,12 @@ export const ReaderApp: React.FC = () => {
                     setTtsOpen(true);
                   }
                 }}
-                className={`p-2 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer ${
+                className={`p-1.5 sm:p-2 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer ${
                   ttsOpen ? 'bg-[var(--accent-subtle)] text-[var(--accent-color)] border-[var(--accent-color)]' : ''
                 }`}
                 title="Listen to Book (Text-To-Speech)"
               >
-                <Headphones className="w-4 h-4" />
+                <Headphones className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
 
               {/* Reading Settings (Themes, Typography, Layout) */}
@@ -424,15 +436,33 @@ export const ReaderApp: React.FC = () => {
                   setSettingsOpen(!settingsOpen);
                   if (searchOpen) setSearchOpen(false);
                 }}
-                className={`p-2 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center ${
+                className={`p-1.5 sm:p-2 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center ${
                   settingsOpen ? 'bg-[var(--accent-subtle)] text-[var(--accent-color)] border-[var(--accent-color)]' : ''
                 }`}
                 title="Settings"
               >
-                <Settings className="w-4 h-4" />
+                <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
             </>
           )}
+
+          {/* Ambient Soundscape Button & Modal Trigger */}
+          <button
+            type="button"
+            onClick={() => setAmbientModalOpen(true)}
+            className={`p-1.5 sm:p-2 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center ${
+              ambientState.isPlaying
+                ? 'border-[var(--accent-color)] bg-[var(--accent-subtle)] text-[var(--accent-color)] shadow-xs'
+                : ''
+            }`}
+            title={
+              ambientState.isPlaying
+                ? `Playing: ${ambientState.currentSound || 'Audio'} (Click to manage)`
+                : 'Ambient Noise & Soundscapes'
+            }
+          >
+            <Waves className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          </button>
 
           {/* Fullscreen Toggle */}
           <button
@@ -443,20 +473,20 @@ export const ReaderApp: React.FC = () => {
             {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
 
-          <div className="w-px h-5 bg-[var(--border-color)] mx-1 hidden sm:block" />
+          <div className="w-px h-5 bg-[var(--border-color)] mx-0.5 sm:mx-1 hidden sm:block" />
 
           {/* Google Profile / Cloud Sync Button */}
           <button
             onClick={() => setSyncOpen(true)}
-            className="px-2.5 py-1.5 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all flex items-center gap-2 cursor-pointer shadow-sm group"
+            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all flex items-center gap-1.5 sm:gap-2 cursor-pointer shadow-sm group shrink-0"
             title={googleUser ? `Connected as ${googleUser.name} (Cloud Sync)` : 'Google Account & Cloud Backup'}
           >
             {/* Google Avatar or G Icon */}
             {googleUser?.picture ? (
-              <img src={googleUser.picture} alt={googleUser.name} className="w-5.5 h-5.5 rounded-full border border-[var(--border-color)] object-cover shrink-0" />
+              <img src={googleUser.picture} alt={googleUser.name} className="w-5 h-5 sm:w-5.5 sm:h-5.5 rounded-full border border-[var(--border-color)] object-cover shrink-0" />
             ) : (
-              <div className="w-5.5 h-5.5 rounded-full bg-[var(--bg-surface)] border border-[var(--border-color)] flex items-center justify-center overflow-hidden shrink-0">
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
+              <div className="w-5 h-5 sm:w-5.5 sm:h-5.5 rounded-full bg-[var(--bg-surface)] border border-[var(--border-color)] flex items-center justify-center overflow-hidden shrink-0">
+                <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5" viewBox="0 0 24 24">
                   <path
                     fill="#4285F4"
                     d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -476,7 +506,7 @@ export const ReaderApp: React.FC = () => {
                 </svg>
               </div>
             )}
-            <span className="text-xs font-semibold tracking-tight hidden sm:inline-block max-w-[120px] truncate">
+            <span className="text-xs font-semibold tracking-tight hidden md:inline-block max-w-[120px] truncate">
               {googleUser ? googleUser.name : 'Sign in'}
             </span>
           </button>
@@ -619,12 +649,12 @@ export const ReaderApp: React.FC = () => {
             {/* Navigation Drawer (TOC, Notes, Comments Hub) */}
             {sidebarOpen && (
               <>
-                {/* Backdrop on small screens (overlay mode) */}
+                {/* Backdrop on small/narrow screens (overlay mode) */}
                 <div
-                  className="fixed inset-0 bg-black/40 z-20 md:hidden backdrop-blur-xs animate-in fade-in duration-150"
+                  className="fixed inset-0 bg-black/40 z-20 lg:hidden backdrop-blur-xs animate-in fade-in duration-150"
                   onClick={() => setSidebarOpen(false)}
                 />
-                <div className="fixed md:static inset-y-0 left-0 z-30 flex">
+                <div className="fixed lg:static inset-y-0 left-0 z-30 flex">
                   <NavigationDrawer
                     bookId={activeBookId || ''}
                     currentCfi={currentLocation.cfi}
@@ -638,11 +668,15 @@ export const ReaderApp: React.FC = () => {
                       const viewEl = document.querySelector('foliate-view') as any;
                       viewEl?.goTo(target);
                       // On mobile/narrow screens, auto-close sidebar after navigation
-                      if (window.innerWidth < 768) {
+                      if (window.innerWidth < 1024) {
                         setSidebarOpen(false);
                       }
                     }}
                     onClose={() => setSidebarOpen(false)}
+                    onOpenSettings={() => {
+                      setSettingsTargetSection('gemini');
+                      setSettingsOpen(true);
+                    }}
                   />
                 </div>
               </>
@@ -679,6 +713,10 @@ export const ReaderApp: React.FC = () => {
                   onLocationChange={(loc) => setCurrentLocation(loc)}
                   onTOCLoaded={(toc) => setTocList(toc)}
                   onWordClick={handleWordClick}
+                  onOpenSettings={() => {
+                    setSettingsTargetSection('gemini');
+                    setSettingsOpen(true);
+                  }}
                 />
               ) : (
                 <div className="max-w-md w-full text-center space-y-4">
@@ -699,11 +737,8 @@ export const ReaderApp: React.FC = () => {
                 isLoading={isLookingUpWord}
                 error={wordLookupError}
                 fontFamily={settings.fontFamily}
-                onClose={() => {
-                  setWordExplanation(null);
-                  setWordLookupError(null);
-                }}
-                onOpenSettings={() => setSettingsOpen(true)}
+                onClose={handleCloseWordModal}
+                onOpenSettings={handleOpenGeminiSettings}
               />
 
               {/* Floating TTS Media Player Bar */}
@@ -742,8 +777,12 @@ export const ReaderApp: React.FC = () => {
             {settingsOpen && (
               <TypographyDrawer
                 settings={settings}
+                targetSection={settingsTargetSection}
                 onUpdate={updateSettings}
-                onClose={() => setSettingsOpen(false)}
+                onClose={() => {
+                  setSettingsOpen(false);
+                  setSettingsTargetSection(null);
+                }}
               />
             )}
           </div>
@@ -758,6 +797,12 @@ export const ReaderApp: React.FC = () => {
           // Refresh user state
           GoogleAuthService.getCurrentUser().then(setUser => setGoogleUser(setUser));
         }}
+      />
+
+      {/* Ambient Noise & Focus Soundscapes Modal */}
+      <AmbientSoundModal
+        isOpen={ambientModalOpen}
+        onClose={() => setAmbientModalOpen(false)}
       />
 
       {/* Global Full-Screen Drag & Drop Overlay */}

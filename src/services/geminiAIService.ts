@@ -46,8 +46,9 @@ export class GeminiAIService {
     const trimmedWord = word.trim();
     const cleanContext = contextSection ? contextSection.slice(0, 3000) : '';
 
-    const systemInstruction = `You are a friendly, gentle English reading assistant for ESL readers. 
-Explain words in VERY SIMPLE, PLAIN, EASY-TO-UNDERSTAND ENGLISH. Avoid academic or obscure definitions.
+    const systemInstruction = `You are an expert British English linguist and dictionary editor (Oxford & Cambridge English standards).
+Explain words in VERY SIMPLE, PLAIN, EASY-TO-UNDERSTAND BRITISH ENGLISH (en-GB). Avoid academic or obscure definitions.
+Always provide the precise standard British English (Received Pronunciation / UK) IPA phonetic transcription using standard Unicode IPA symbols and the proper primary stress mark /ˈ/ (U+02C8) (e.g. /ˈeŋ.kleɪv/, /ˈdɒm.ɪ.saɪl/, /ˈskedʒ.uːl/).
 Always respond in strictly valid JSON without markdown fences or extra commentary.`;
 
     const prompt = `Context: From the book "${bookTitle || 'the book'}" in the current chapter/section:
@@ -55,14 +56,14 @@ Always respond in strictly valid JSON without markdown fences or extra commentar
 ${cleanContext}
 """
 
-Please explain the word/phrase "${trimmedWord}" as it is used in this context.
+Please explain the word/phrase "${trimmedWord}" as it is used in this context using British English (UK / Cambridge / Oxford) standards.
 
 Return ONLY a JSON object with this exact structure:
 {
   "word": "${trimmedWord}",
-  "ipa": "/.../",
+  "ipa": "/.../", // Standard British English (UK / RP) IPA pronunciation with proper IPA symbols & stress mark /ˈ/ (e.g. /ˈeŋ.kleɪv/, /ˈdɒm.ɪ.saɪl/)
   "partOfSpeech": "noun / verb / adjective / etc",
-  "simpleDefinition": "A very simple, clear explanation of what this word means in this context, using everyday English words.",
+  "simpleDefinition": "A very simple, clear explanation in British English of what this word means in this context, using everyday English words.",
   "synonyms": ["simple synonym 1", "simple synonym 2", "simple synonym 3"],
   "contextExplanation": "One short simple sentence explaining what it specifically refers to in this sentence or chapter."
 }`;
@@ -73,12 +74,13 @@ Return ONLY a JSON object with this exact structure:
     for (let i = 0; i < keys.length; i++) {
       const apiKey = keys[i];
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.MODEL}:generateContent?key=${apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.MODEL}:generateContent`;
 
         const res = await fetch(url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
           },
           body: JSON.stringify({
             contents: [
@@ -116,9 +118,19 @@ Return ONLY a JSON object with this exact structure:
         // Clean JSON text (strip markdown code block markers if any)
         const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
         const parsed: IWordExplanation = JSON.parse(cleanJson);
+
+        // Normalize IPA string: replace standard ASCII apostrophes/single quotes with true Unicode IPA stress marks
+        let rawIpa = (parsed.ipa || '').trim();
+        if (rawIpa) {
+          rawIpa = rawIpa
+            .replace(/'/g, 'ˈ')
+            .replace(/`/g, 'ˈ')
+            .replace(/,/g, 'ˌ');
+        }
+
         return {
           word: parsed.word || trimmedWord,
-          ipa: parsed.ipa || '',
+          ipa: rawIpa,
           partOfSpeech: parsed.partOfSpeech || '',
           simpleDefinition: parsed.simpleDefinition || 'No definition found.',
           synonyms: Array.isArray(parsed.synonyms) ? parsed.synonyms : [],
@@ -186,12 +198,13 @@ Return JSON in this exact schema:
     for (let i = 0; i < keys.length; i++) {
       const apiKey = keys[i];
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.MODEL}:generateContent?key=${apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.MODEL}:generateContent`;
 
         const res = await fetch(url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
           },
           body: JSON.stringify({
             contents: [

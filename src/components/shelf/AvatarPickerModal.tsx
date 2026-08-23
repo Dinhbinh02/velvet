@@ -52,7 +52,7 @@ export const AvatarPickerModal: React.FC<AvatarPickerModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-xs animate-in fade-in duration-150 select-none">
-      <div className="w-full max-w-2xl bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-150">
+      <div className="w-full max-w-2xl bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[580px] max-h-[85vh] animate-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="p-5 border-b border-[var(--border-color)] bg-[var(--bg-secondary)]/40 flex items-center justify-between">
           <div className="flex items-center gap-3">

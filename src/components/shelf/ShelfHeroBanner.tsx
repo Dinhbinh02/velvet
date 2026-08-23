@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Flame, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '@/src/db/schema';
 import { AvatarPickerModal } from './AvatarPickerModal';
 import { GHIBLI_OFFICIAL_COLLECTIONS } from '@/src/data/ghibliOfficialScenes';
 
@@ -14,6 +16,66 @@ export const ShelfHeroBanner: React.FC<ShelfHeroBannerProps> = ({
 }) => {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [currentDate, setCurrentDate] = useState(() => new Date());
+
+  // Query actual reading activity from progress records and books lastReadAt
+  const progressList = useLiveQuery(() => db.progress.toArray(), []) || [];
+  const booksList = useLiveQuery(() => db.books.toArray(), []) || [];
+
+  // Map of date strings ('YYYY-MM-DD') that have actual reading activity
+  const activeDateSet = useMemo(() => {
+    const set = new Set<string>();
+
+    const toDateKey = (timestamp: number) => {
+      const d = new Date(timestamp);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
+    progressList.forEach((p) => {
+      if (p.updatedAt && (p.percentage > 0 || p.cfi)) {
+        set.add(toDateKey(p.updatedAt));
+      }
+    });
+
+    booksList.forEach((b) => {
+      if (b.lastReadAt && b.lastReadAt > b.addedAt) {
+        set.add(toDateKey(b.lastReadAt));
+      }
+    });
+
+    return set;
+  }, [progressList, booksList]);
+
+  // Compute consecutive day streak ending today (or yesterday)
+  const currentStreak = useMemo(() => {
+    const toDateKey = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    const now = new Date();
+    const todayKey = toDateKey(now);
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayKey = toDateKey(yesterday);
+
+    // If neither today nor yesterday has reading activity, streak is 0
+    if (!activeDateSet.has(todayKey) && !activeDateSet.has(yesterdayKey)) {
+      return 0;
+    }
+
+    let streak = 0;
+    const checkDate = new Date(now);
+
+    // If today is not yet active, start counting backwards from yesterday
+    if (!activeDateSet.has(todayKey)) {
+      checkDate.setDate(checkDate.getDate() - 1);
+    }
+
+    while (activeDateSet.has(toDateKey(checkDate))) {
+      streak++;
+      checkDate.setDate(checkDate.getDate() - 1);
+    }
+
+    return streak;
+  }, [activeDateSet]);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth(); // 0-indexed
@@ -88,8 +150,12 @@ export const ShelfHeroBanner: React.FC<ShelfHeroBannerProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-bold text-[var(--text-primary)]">Reading Streak</h3>
-                <span className="text-[10px] font-bold text-[var(--accent-color)] bg-[var(--accent-subtle)] px-2 py-0.5 rounded-md">
-                  1 Day Streak
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md transition-all ${
+                  currentStreak > 0
+                    ? 'text-[var(--accent-color)] bg-[var(--accent-subtle)]'
+                    : 'text-[var(--text-muted)] bg-[var(--bg-secondary)]'
+                }`}>
+                  {currentStreak} {currentStreak === 1 ? 'Day' : 'Days'} Streak
                 </span>
               </div>
             </div>
@@ -141,7 +207,8 @@ export const ShelfHeroBanner: React.FC<ShelfHeroBannerProps> = ({
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const day = i + 1;
               const isToday = isCurrentMonth && day === currentDayNumber;
-              const hasActivity = isToday; // Today marked with reading flame
+              const dayKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+              const hasActivity = activeDateSet.has(dayKey);
 
               return (
                 <div
@@ -150,10 +217,10 @@ export const ShelfHeroBanner: React.FC<ShelfHeroBannerProps> = ({
                     hasActivity
                       ? 'bg-[var(--accent-color)] text-white border-[var(--accent-color)] shadow-xs font-bold scale-105'
                       : isToday
-                      ? 'bg-[var(--bg-secondary)] text-[var(--accent-color)] border-[var(--accent-color)]'
+                      ? 'bg-[var(--bg-secondary)] text-[var(--accent-color)] border-[var(--accent-color)]/70 font-semibold'
                       : 'bg-[var(--bg-secondary)]/50 text-[var(--text-secondary)] border-[var(--border-color)]/60 hover:border-[var(--border-hover)] hover:bg-[var(--bg-secondary)]'
                   }`}
-                  title={`${monthName} ${day}, ${year}`}
+                  title={`${monthName} ${day}, ${year}${hasActivity ? ' • Read' : ''}`}
                 >
                   <span>{day}</span>
                 </div>

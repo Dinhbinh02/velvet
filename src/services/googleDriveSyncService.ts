@@ -42,6 +42,11 @@ export class GoogleDriveSyncService {
       },
     });
 
+    if (res.status === 401) {
+      await GoogleAuthService.invalidateCachedToken();
+      throw new Error('401_UNAUTHORIZED');
+    }
+
     if (!res.ok) {
       const errText = await res.text();
       throw new Error(`Failed to search Drive file: ${errText}`);
@@ -136,8 +141,11 @@ export class GoogleDriveSyncService {
    * Upload / Update lightweight Velvet metadata database to Google Drive appDataFolder
    * (Does NOT include bulky covers or EPUB binaries - super fast <100ms)
    */
-  public static async backupNow(): Promise<{ success: boolean; timestamp: number; fileId: string }> {
-    const token = await GoogleAuthService.getAccessToken(true);
+  public static async backupNow(interactive: boolean = true): Promise<{ success: boolean; timestamp: number; fileId: string }> {
+    let token = await GoogleAuthService.getAccessToken(interactive);
+    if (!token && !interactive) {
+      throw new Error('401_UNAUTHORIZED');
+    }
 
     // 1. Gather all data from IndexedDB
     const [rawBooks, progress, notes, highlights, comments, chapterSummaries, customFonts] = await Promise.all([
@@ -168,7 +176,22 @@ export class GoogleDriveSyncService {
       customFonts,
     };
 
-    const existingFileId = await this.findDriveFile(token, BACKUP_FILENAME);
+    let existingFileId: string | null = null;
+    try {
+      existingFileId = await this.findDriveFile(token, BACKUP_FILENAME);
+    } catch (err: any) {
+      if (err.message === '401_UNAUTHORIZED') {
+        if (interactive) {
+          // Retry once with interactive prompt if permitted
+          token = await GoogleAuthService.getAccessToken(true);
+          existingFileId = await this.findDriveFile(token, BACKUP_FILENAME);
+        } else {
+          throw err;
+        }
+      } else {
+        throw err;
+      }
+    }
     const blob = new Blob([JSON.stringify(payload)], { type: BACKUP_MIME_TYPE });
 
     let fileId: string;
@@ -336,11 +359,12 @@ export class GoogleDriveSyncService {
       if (!token) return false;
 
       this.isSyncingInProgress = true;
-      await this.backupNow();
-      console.log('Velvet Auto-Sync completed successfully.');
+      await this.backupNow(false);
       return true;
-    } catch (e) {
-      console.warn('Velvet silent auto-sync skipped/failed:', e);
+    } catch (e: any) {
+      if (e?.message !== '401_UNAUTHORIZED') {
+        console.debug('Velvet background auto-sync skipped:', e?.message || e);
+      }
       return false;
     } finally {
       this.isSyncingInProgress = false;

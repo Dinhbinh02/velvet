@@ -29,6 +29,7 @@ interface FoliateViewerProps {
   onLocationChange?: (info: { cfi: string; percentage: number; chapterTitle?: string; sectionIndex: number }) => void;
   onTOCLoaded?: (toc: any[]) => void;
   onWordClick?: (word: string, contextSection: string) => void;
+  onOpenSettings?: () => void;
 }
 
 export interface FoliateViewerRef {
@@ -45,6 +46,7 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
   onLocationChange,
   onTOCLoaded,
   onWordClick,
+  onOpenSettings,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<any>(null);
@@ -136,15 +138,14 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
 
   // Track TTS active state in ref to avoid stale closure in doc click listener
   const isTTSActiveRef = useRef(isTTSActive);
-  useEffect(() => {
-    isTTSActiveRef.current = isTTSActive;
-  }, [isTTSActive]);
+  isTTSActiveRef.current = isTTSActive;
 
   // Track onWordClick in ref to avoid stale closure
   const onWordClickRef = useRef(onWordClick);
-  useEffect(() => {
-    onWordClickRef.current = onWordClick;
-  }, [onWordClick]);
+  onWordClickRef.current = onWordClick;
+
+  const onOpenSettingsRef = useRef(onOpenSettings);
+  onOpenSettingsRef.current = onOpenSettings;
 
   // Track recent highlight operations for Undo (Cmd+Z / Ctrl+Z)
   const highlightHistoryRef = useRef<Array<{ span: HTMLElement; noteId: string }>>([]);
@@ -214,6 +215,8 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
     const bgColor = palette.bg;
 
     return `
+      @import url('https://fonts.googleapis.com/css2?family=Bitter:ital,wght@0,400..700;1,400..700&family=Inter:wght@300..700&family=Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400..700&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap');
+
       ${customFontFaceRules}
 
       html {
@@ -267,9 +270,28 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
         color: inherit;
         font-family: inherit;
       }
+      /* Footnotes, Superscript & Subscript styling preservation */
+      sup, [class*="footnote"], [class*="noteref"], a[href*="note"], a[href*="fn"] {
+        font-size: 0.72em !important;
+        line-height: 0 !important;
+        position: relative !important;
+        vertical-align: baseline !important;
+        top: -0.45em !important;
+      }
+      sub {
+        font-size: 0.72em !important;
+        line-height: 0 !important;
+        position: relative !important;
+        vertical-align: baseline !important;
+        bottom: -0.25em !important;
+      }
       /* Do not override font-size on inline elements unless direct child of body/p */
       body > span, p span, li span, blockquote span, body > div, p div {
         font-size: inherit;
+      }
+      /* Keep sup and footnote links from expanding */
+      p sup, li sup, blockquote sup, p a[href*="note"], p [class*="footnote"] {
+        font-size: 0.72em !important;
       }
       img {
         max-width: 100% !important;
@@ -347,6 +369,31 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
       * {
         scrollbar-width: thin !important;
         scrollbar-color: rgba(130, 120, 110, 0.3) transparent !important;
+      }
+      /* Velvet Chapter AI Summary Card exact settings font size */
+      .velvet-chapter-summary-card {
+        font-family: ${fontFamily} !important;
+        font-size: ${fontSize}px !important;
+        line-height: ${lineHeight} !important;
+        color: ${textColor} !important;
+        box-sizing: border-box !important;
+      }
+      .velvet-chapter-summary-card div,
+      .velvet-chapter-summary-card p,
+      .velvet-chapter-summary-card li {
+        font-family: ${fontFamily} !important;
+        font-size: ${fontSize}px !important;
+        line-height: ${lineHeight} !important;
+        color: ${textColor} !important;
+      }
+      .velvet-chapter-summary-card .velvet-summary-badge {
+        font-size: ${Math.max(12, Math.round(fontSize * 0.85))}px !important;
+        line-height: 1.3 !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.05em !important;
+        text-transform: uppercase !important;
+        opacity: 0.85 !important;
+        margin-bottom: 8px !important;
       }
       /* TTS Live Highlight Styles */
       .velvet-tts-sentence {
@@ -487,21 +534,29 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
 
         // Get saved progress from Dexie
         const progress = await db.progress.get(bookId);
+        let navigated = false;
+
         if (progress?.cfi && progress.cfi.trim().length > 0) {
           try {
             await view.goTo(progress.cfi);
+            navigated = true;
           } catch (e) {
-            console.warn('Could not navigate to saved CFI, defaulting to start:', progress.cfi);
-            try {
-              await view.init();
-            } catch {
-              try {
-                await view.goTo(0);
-              } catch {}
-            }
+            console.warn('Could not navigate to saved CFI, attempting fallback:', progress.cfi, e);
           }
-        } else {
-          // Fresh import with no prior progress: initialize view renderer
+        }
+
+        // Fallback 1: if CFI navigation failed or no CFI, try sectionIndex
+        if (!navigated && typeof progress?.sectionIndex === 'number' && progress.sectionIndex >= 0) {
+          try {
+            await view.goTo(progress.sectionIndex);
+            navigated = true;
+          } catch (e) {
+            console.warn('Could not navigate to saved sectionIndex:', progress.sectionIndex, e);
+          }
+        }
+
+        // Fallback 2: initialize view or go to start
+        if (!navigated) {
           try {
             if (typeof view.init === 'function') {
               await view.init();
@@ -663,23 +718,20 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
                 card.style.borderBottom = '1px solid currentColor';
                 card.style.borderColor = 'color-mix(in srgb, currentColor 18%, transparent)';
                 card.style.backgroundColor = 'color-mix(in srgb, currentColor 4%, transparent)';
-                card.style.fontFamily = 'inherit';
-                card.style.fontSize = '0.95em';
-                card.style.lineHeight = '1.6';
                 card.style.color = 'inherit';
                 card.style.boxSizing = 'border-box';
 
                 const keyPointsHtml = Array.isArray(s.keyPoints) && s.keyPoints.length > 0
-                  ? `<ul style="margin: 12px 0 0 0; padding-left: 20px; list-style-type: disc; opacity: 0.92; line-height: 1.55;">
+                  ? `<ul style="margin: 12px 0 0 0; padding-left: 20px; list-style-type: disc; opacity: 0.92;">
                       ${s.keyPoints.map((kp) => `<li style="margin-bottom: 6px;">${kp}</li>`).join('')}
                     </ul>`
                   : '';
 
                 card.innerHTML = `
-                  <div style="font-weight: 700; font-size: 0.9em; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.75; margin-bottom: 8px;">
+                  <div class="velvet-summary-badge">
                     Key Insights
                   </div>
-                  <div style="opacity: 0.95; font-size: 1em; line-height: 1.6;">
+                  <div style="opacity: 0.95;">
                     ${s.summary}
                   </div>
                   ${keyPointsHtml}
@@ -748,6 +800,44 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
           };
         };
 
+        // Extract context before and after the selected range (up to 4000 characters total)
+        const extractSurroundingContext = (range: Range): string => {
+          try {
+            const maxCharsBefore = 2000;
+            const maxCharsAfter = 2000;
+
+            // 1. Text before selection
+            let beforeText = '';
+            try {
+              const beforeRange = doc.createRange();
+              beforeRange.setStart(doc.body || doc.documentElement, 0);
+              beforeRange.setEnd(range.startContainer, range.startOffset);
+              const fullBefore = beforeRange.toString();
+              beforeText = fullBefore.slice(Math.max(0, fullBefore.length - maxCharsBefore));
+            } catch {}
+
+            // 2. Selected text
+            const middleText = range.toString();
+
+            // 3. Text after selection
+            let afterText = '';
+            try {
+              const afterRange = doc.createRange();
+              afterRange.setStart(range.endContainer, range.endOffset);
+              const endNode = doc.body || doc.documentElement;
+              afterRange.setEnd(endNode, endNode.childNodes.length);
+              const fullAfter = afterRange.toString();
+              afterText = fullAfter.slice(0, maxCharsAfter);
+            } catch {}
+
+            const combined = (beforeText + middleText + afterText).trim();
+            if (combined) return combined;
+          } catch {}
+
+          // Fallback to body snippet
+          return (doc.body?.innerText || doc.body?.textContent || '').slice(0, 4000).trim();
+        };
+
         // Handle text selection in iframe -> show floating search tooltip button
         const handleSelectionCheck = () => {
           const selection = doc.getSelection();
@@ -766,7 +856,7 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
                   : (startContainer as HTMLElement)?.closest('.velvet-user-highlight')) as HTMLElement | null;
 
                 const { x, y, modalY, placement } = computeCoordinates(range);
-                const contextText = (doc.body?.innerText || doc.body?.textContent || '').trim();
+                const contextText = extractSurroundingContext(range);
 
                 setFloatingTooltip({
                   visible: true,
@@ -867,7 +957,7 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
             range.selectNodeContents(clickedHighlight);
             const { x, y, placement } = computeCoordinates(range);
             const text = (clickedHighlight.textContent || '').trim();
-            const contextText = (doc.body?.innerText || doc.body?.textContent || '').trim();
+            const contextText = extractSurroundingContext(range);
 
             setFloatingTooltip({
               visible: true,
@@ -1357,7 +1447,11 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              if (onWordClickRef.current && floatingTooltip.text) {
+              if (!settings?.geminiApiKey?.trim()) {
+                if (onOpenSettingsRef.current) {
+                  onOpenSettingsRef.current();
+                }
+              } else if (onWordClickRef.current && floatingTooltip.text) {
                 onWordClickRef.current(floatingTooltip.text, floatingTooltip.contextText);
               }
               setFloatingTooltip((prev) => ({ ...prev, visible: false }));

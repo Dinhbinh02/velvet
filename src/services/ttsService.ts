@@ -37,74 +37,59 @@ export class TTSService {
   private static playSessionId: number = 0;
 
   /**
+  /**
    * Extract readable sentences from a Foliate EPUB document/section
-   * Wraps each sentence in an inline span with data-tts-id for precise single-sentence highlight and click-to-read
+   * Traverses text blocks non-destructively without wiping innerHTML, formatting, or sup/footnote links.
    */
   static extractSentencesFromDoc(doc: Document): ITTSSentence[] {
     const list: ITTSSentence[] = [];
     if (!doc || !doc.body) return list;
 
+    // Remove any previously injected velvet-tts-sentence wrapper spans if re-extracting
+    const existingSpans = doc.body.querySelectorAll('.velvet-tts-sentence');
+    if (existingSpans.length > 0) {
+      existingSpans.forEach((span) => {
+        const parent = span.parentNode;
+        while (span.firstChild) {
+          parent?.insertBefore(span.firstChild, span);
+        }
+        parent?.removeChild(span);
+      });
+      doc.body.normalize();
+    }
+
     const blockNodes = doc.body.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote');
     let sentenceId = 0;
 
     blockNodes.forEach((block) => {
-      // If already processed, skip re-wrapping
-      if (block.querySelector('[data-tts-id]')) return;
-
       const rawText = (block.textContent || '').trim();
       if (!rawText || rawText.length < 2) return;
 
-      // Clean multiple whitespaces
+      // Wrap the whole block element as a sentence unit if not deeply complex, or collect sentences cleanly
       const cleanText = rawText.replace(/\s+/g, ' ');
+      
+      // Intelligent split: split by [.!?] followed by space and capital letter or quote
+      const sentences: string[] = [];
+      const parts = cleanText.split(/(?<=[.!?])\s+(?=[A-Z"“'‘\d])/);
+      parts.forEach((p) => {
+        const trimmed = p.trim();
+        if (trimmed.length > 0) sentences.push(trimmed);
+      });
 
-      // Split into sentences using regex boundary (. ! ? ; : only if followed by space+uppercase or end)
-      // Avoids splitting decimal numbers (2.5), abbreviations (U.S.), etc.
-      const sentenceRegex = /[^.!?;]+(?:[.!?;]+(?!\d|[a-z]|\s*[a-z]))+|[^.!?;]+[.!?;]*$/g;
-      const matches = cleanText.match(sentenceRegex);
+      if (sentences.length === 0) {
+        sentences.push(cleanText);
+      }
 
-      if (matches && matches.length > 0) {
-        // Clear block and replace with wrapped sentence spans
-        block.innerHTML = '';
-        matches.forEach((sentencePart) => {
-          const s = sentencePart.trim();
-          if (s.length > 0) {
-            const span = doc.createElement('span');
-            span.setAttribute('data-tts-id', sentenceId.toString());
-            span.className = 'velvet-tts-sentence';
-            span.textContent = s;
-            block.appendChild(span);
-            // Append whitespace outside the highlighted span so it does not get highlighted
-            block.appendChild(doc.createTextNode(' '));
-
-            list.push({
-              id: sentenceId,
-              text: s,
-              element: span,
-              charOffsetStart: 0,
-              charOffsetEnd: s.length,
-            });
-
-            sentenceId++;
-          }
-        });
-      } else {
-        const span = doc.createElement('span');
-        span.setAttribute('data-tts-id', sentenceId.toString());
-        span.className = 'velvet-tts-sentence';
-        span.textContent = cleanText;
-        block.innerHTML = '';
-        block.appendChild(span);
-
+      sentences.forEach((s) => {
         list.push({
           id: sentenceId,
-          text: cleanText,
-          element: span,
+          text: s,
+          element: block as HTMLElement,
           charOffsetStart: 0,
-          charOffsetEnd: cleanText.length,
+          charOffsetEnd: s.length,
         });
-
         sentenceId++;
-      }
+      });
     });
 
     this.sentences = list;
@@ -426,17 +411,18 @@ export class TTSService {
       }
 
       // If not single word or Oxford audio wasn't found, fallback to Google TTS
-      // Auto-detect language, but use en-GB for English text
-      const detectedLang = GoogleTTSService.detectLanguage(trimmed);
-      const resolvedLang = detectedLang === 'en' ? 'en-GB' : detectedLang;
-      const audioBlob = await GoogleTTSService.synthesize(
-        trimmed,
-        resolvedLang,
-        this.settings.rate || 1.0
-      );
-      if (sessionId !== this.playSessionId) return;
-      audioUrl = URL.createObjectURL(audioBlob);
-      isBlob = true;
+      if (!audioUrl) {
+        const detectedLang = GoogleTTSService.detectLanguage(trimmed);
+        const resolvedLang = detectedLang === 'en' ? 'en-GB' : detectedLang;
+        const audioBlob = await GoogleTTSService.synthesize(
+          trimmed,
+          resolvedLang,
+          this.settings.rate || 1.0
+        );
+        if (sessionId !== this.playSessionId) return;
+        audioUrl = URL.createObjectURL(audioBlob);
+        isBlob = true;
+      }
 
       if (sessionId !== this.playSessionId || !audioUrl) return;
 

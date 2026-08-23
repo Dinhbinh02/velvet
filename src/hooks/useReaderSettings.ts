@@ -7,7 +7,7 @@ const SETTINGS_ID = 'global-settings';
 export const DEFAULT_SETTINGS: IReaderSettings = {
   id: SETTINGS_ID,
   theme: 'paper',
-  fontFamily: 'Literata, Georgia, serif',
+  fontFamily: "'Literata', Georgia, serif",
   fontSize: 18,
   lineHeight: 1.65,
   paragraphSpacing: 1.2,
