@@ -25,9 +25,20 @@ export class R2StorageService {
       // Compute hash if not provided
       const hash = fileHash || (await EpubOptimizerService.computeHash(file));
       const r2Key = `books/${hash}.epub`;
-      const r2Config = await SupabaseService.getR2Config();
+      // 1. Native Cloudflare Pages R2 endpoint (/api/r2/...)
+      try {
+        const directRes = await fetch(`/api/r2/${r2Key}`, {
+          method: 'PUT',
+          body: file,
+        });
+        if (directRes.ok) {
+          console.log(`[R2] Uploaded ${r2Key} successfully via Cloudflare Pages R2!`);
+          return r2Key;
+        }
+      } catch {}
 
-      // 1. If Cloudflare Worker URL is configured for presigned upload & deduplication check
+      // 2. If Cloudflare Worker URL is configured for presigned upload & deduplication check
+      const r2Config = await SupabaseService.getR2Config();
       if (r2Config?.workerUrl) {
         try {
           const presignRes = await fetch(`${r2Config.workerUrl}/presign`, {
@@ -43,7 +54,6 @@ export class R2StorageService {
 
           if (presignRes.ok) {
             const data = await presignRes.json();
-            // If already exists on R2, deduplication hit -> return immediately!
             if (data.exists) {
               console.log(`[Deduplication] Book ${hash} already exists in R2, skipping upload!`);
               return r2Key;
@@ -63,10 +73,9 @@ export class R2StorageService {
         }
       }
 
-      // 2. Fallback: Upload to Supabase Storage bucket 'books'
+      // 3. Fallback: Upload to Supabase Storage bucket 'books'
       const supabase = await SupabaseService.getClient();
       if (supabase) {
-        // Check if file already exists in bucket
         const { data: existingFiles } = await supabase.storage.from('books').list('books', {
           search: `${hash}.epub`,
         });
@@ -93,19 +102,29 @@ export class R2StorageService {
    */
   public static async downloadBook(bookId: string, r2Key: string): Promise<boolean> {
     try {
-      const r2Config = await SupabaseService.getR2Config();
       let fileBlob: Blob | null = null;
 
-      // 1. Download via Public Domain or Cloudflare Worker if available
-      if (r2Config?.publicDomain) {
-        const publicUrl = `${r2Config.publicDomain.replace(/\/$/, '')}/${r2Key}`;
-        const res = await fetch(publicUrl);
-        if (res.ok) {
-          fileBlob = await res.blob();
+      // 1. Download via Native Cloudflare Pages R2 endpoint
+      try {
+        const directRes = await fetch(`/api/r2/${r2Key}`);
+        if (directRes.ok) {
+          fileBlob = await directRes.blob();
+        }
+      } catch {}
+
+      // 2. Download via Public Domain or Cloudflare Worker if available
+      if (!fileBlob) {
+        const r2Config = await SupabaseService.getR2Config();
+        if (r2Config?.publicDomain) {
+          const publicUrl = `${r2Config.publicDomain.replace(/\/$/, '')}/${r2Key}`;
+          const res = await fetch(publicUrl);
+          if (res.ok) {
+            fileBlob = await res.blob();
+          }
         }
       }
 
-      // 2. Fallback: Download from Supabase Storage bucket 'books'
+      // 3. Fallback: Download from Supabase Storage bucket 'books'
       if (!fileBlob) {
         const supabase = await SupabaseService.getClient();
         if (supabase) {
