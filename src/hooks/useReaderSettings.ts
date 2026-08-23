@@ -18,6 +18,7 @@ export const DEFAULT_SETTINGS: IReaderSettings = {
   nextPageShortcut: 'ArrowRight',
   highlightColor: '#fef08a',
   highlightShortcut: 'h',
+  customAvatar: 'https://www.ghibli.jp/gallery/howl041.jpg',
   ttsSettings: {
     provider: 'google',
     voice: 'vi',
@@ -28,26 +29,50 @@ export const DEFAULT_SETTINGS: IReaderSettings = {
   },
 };
 
+/**
+ * Synchronous initial settings cache to prevent any visual flash (FOUC) on page reload
+ */
+const getInitialSettings = (): IReaderSettings => {
+  try {
+    const cached = localStorage.getItem('velvet_settings_cache');
+    if (cached) {
+      return { ...DEFAULT_SETTINGS, ...JSON.parse(cached) };
+    }
+  } catch {}
+  return DEFAULT_SETTINGS;
+};
+
 export function useReaderSettings() {
   const savedSettings = useLiveQuery(
     async () => {
       try {
         const setting = await db.settings.get(SETTINGS_ID);
-        return setting || DEFAULT_SETTINGS;
+        if (setting) {
+          try {
+            localStorage.setItem('velvet_settings_cache', JSON.stringify(setting));
+          } catch {}
+          return setting;
+        }
+        return getInitialSettings();
       } catch {
-        return DEFAULT_SETTINGS;
+        return getInitialSettings();
       }
     },
     []
   );
 
-  const settings: IReaderSettings = savedSettings || DEFAULT_SETTINGS;
+  const settings: IReaderSettings = savedSettings || getInitialSettings();
 
   const updateSettings = async (updates: Partial<IReaderSettings>) => {
     try {
-      const current = (await db.settings.get(SETTINGS_ID)) || DEFAULT_SETTINGS;
+      const current = (await db.settings.get(SETTINGS_ID)) || getInitialSettings();
       const newSettings = { ...current, ...updates };
+      try {
+        localStorage.setItem('velvet_settings_cache', JSON.stringify(newSettings));
+      } catch {}
       await db.settings.put(newSettings);
+      const { SupabaseSyncService } = await import('../services/supabaseSyncService');
+      SupabaseSyncService.triggerAutoSync(10000);
     } catch (err) {
       console.error('Error saving settings:', err);
     }

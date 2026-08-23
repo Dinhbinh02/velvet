@@ -113,10 +113,26 @@ export const AvatarPickerModal: React.FC<AvatarPickerModalProps> = ({
         {tab === 'ghibli' && (
           <div className="px-5 pt-3 pb-2 border-b border-[var(--border-color)]/60">
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs select-none scrollbar-thin">
+              {/* Randomize / Auto Shuffle on Open Button */}
+              <button
+                onClick={() => {
+                  onSelectAvatar('random');
+                  onClose();
+                }}
+                className={`px-3 py-1.5 rounded-xl shrink-0 font-semibold transition-all cursor-pointer ${
+                  currentAvatar === 'random'
+                    ? 'bg-[var(--accent-color)] text-white shadow-xs'
+                    : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface)] border border-[var(--border-color)]'
+                }`}
+                title="Random photo on every open"
+              >
+                Random each open
+              </button>
+
               <button
                 onClick={() => setSelectedMovie('all')}
                 className={`px-3 py-1.5 rounded-xl shrink-0 font-semibold transition-all cursor-pointer ${
-                  selectedMovie === 'all'
+                  selectedMovie === 'all' && currentAvatar !== 'random'
                     ? 'bg-[var(--accent-color)] text-white shadow-xs'
                     : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface)] border border-[var(--border-color)]'
                 }`}
@@ -124,7 +140,7 @@ export const AvatarPickerModal: React.FC<AvatarPickerModalProps> = ({
                 All ({allGhibliImages.length})
               </button>
               {GHIBLI_OFFICIAL_COLLECTIONS.map((c) => {
-                const isCatActive = selectedMovie === c.category;
+                const isCatActive = selectedMovie === c.category && currentAvatar !== 'random';
                 const shortName = c.category.split('(')[0].trim();
                 return (
                   <button

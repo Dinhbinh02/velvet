@@ -112,7 +112,16 @@ export class FontService {
       createdAt: Date.now(),
     };
 
-    await db.customFonts.put(customFont);
+    await db.transaction('rw', [db.customFonts, db.tombstones], async () => {
+      await db.customFonts.put(customFont);
+      await db.tombstones.delete(id);
+    });
+
+    const { R2StorageService } = await import('./r2StorageService');
+    const { SupabaseSyncService } = await import('./supabaseSyncService');
+    R2StorageService.uploadFont(customFont).catch(() => {});
+    SupabaseSyncService.triggerAutoSync(15000);
+
     return customFont;
   }
 
@@ -120,7 +129,13 @@ export class FontService {
    * Delete a custom font
    */
   static async deleteFont(id: string): Promise<void> {
+    const { TombstoneService } = await import('./tombstoneService');
+    await TombstoneService.recordTombstone(id, 'font');
     await db.customFonts.delete(id);
+    const { R2StorageService } = await import('./r2StorageService');
+    const { SupabaseSyncService } = await import('./supabaseSyncService');
+    R2StorageService.deleteFont(id).catch(() => {});
+    SupabaseSyncService.triggerAutoSync(15000);
   }
 
   /**

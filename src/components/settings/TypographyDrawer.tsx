@@ -1,9 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { X, Type, Columns, RotateCcw, AlignLeft, AlignJustify, Palette, Upload, Trash2, Keyboard, Bot, Highlighter, ExternalLink, Info, Waves, Volume2, Square } from 'lucide-react';
+import { X, Type, Columns, RotateCcw, AlignLeft, AlignJustify, Palette, Upload, Trash2, Keyboard, Bot, Highlighter, ExternalLink, Info } from 'lucide-react';
 import type { IReaderSettings, ICustomFont, ITTSSettings } from '@/src/types/book';
 import { DEFAULT_SETTINGS } from '@/src/hooks/useReaderSettings';
 import { FontService } from '@/src/services/fontService';
-import { AmbientSoundService, AMBIENT_SOUNDS } from '@/src/services/ambientSoundService';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/src/db/schema';
 
@@ -57,13 +56,6 @@ export const TypographyDrawer: React.FC<TypographyDrawerProps> = ({
   };
 
   const [recordingTarget, setRecordingTarget] = useState<'quickRead' | 'highlight' | 'prevPage' | 'nextPage' | null>(null);
-  const [ambientState, setAmbientState] = useState(() => AmbientSoundService.getState());
-
-  useEffect(() => {
-    return AmbientSoundService.subscribe(() => {
-      setAmbientState(AmbientSoundService.getState());
-    });
-  }, []);
 
   // Listen for key presses when user is recording a shortcut
   useEffect(() => {
@@ -131,10 +123,12 @@ export const TypographyDrawer: React.FC<TypographyDrawerProps> = ({
   }, [recordingTarget, settings.ttsSettings, onUpdate]);
 
   const defaultFontFamilies = [
-    { id: "'Literata', Georgia, serif", label: 'Literata (Bookerly Style)' },
-    { id: "'Bitter', serif", label: 'Bitter (Slab Serif)' },
-    { id: "'Merriweather', serif", label: 'Merriweather (Classic Serif)' },
-    { id: "'Inter', -apple-system, sans-serif", label: 'Inter (Modern Sans)' },
+    { id: "'Literata', Georgia, serif", label: 'Literata' },
+    { id: "'Source Serif 4', Georgia, serif", label: 'Source Serif 4' },
+    { id: "'Lora', Georgia, serif", label: 'Lora' },
+    { id: "'Merriweather', serif", label: 'Merriweather' },
+    { id: "'Atkinson Hyperlegible', sans-serif", label: 'Atkinson Hyperlegible' },
+    { id: "'Inter', -apple-system, sans-serif", label: 'Inter' },
   ];
 
   const handleFontUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -639,65 +633,6 @@ export const TypographyDrawer: React.FC<TypographyDrawerProps> = ({
             <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
               Select text & press shortcut to highlight instantly.
             </p>
-          </div>
-        </div>
-
-        {/* 7. Ambient White Noise & Soundscapes */}
-        <div className="p-4 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-color)] space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1.5">
-              <Waves className="w-3.5 h-3.5 text-[var(--accent-color)]" />
-              Ambient Soundscapes
-            </span>
-            {ambientState.isPlaying && (
-              <button
-                type="button"
-                onClick={() => AmbientSoundService.stop()}
-                className="px-2 py-0.5 rounded-md bg-rose-500/15 hover:bg-rose-500/25 text-rose-500 text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1"
-              >
-                <Square className="w-2.5 h-2.5 fill-current" />
-                <span>Stop</span>
-              </button>
-            )}
-          </div>
-
-          {/* Volume Slider */}
-          <div className="flex items-center gap-2 pt-0.5">
-            <Volume2 className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={ambientState.volume}
-              onChange={(e) => AmbientSoundService.setVolume(parseFloat(e.target.value))}
-              className="flex-1 h-1 bg-[var(--border-color)] accent-[var(--accent-color)] rounded-lg cursor-pointer"
-            />
-            <span className="text-[10px] font-mono text-[var(--text-muted)] w-7 text-right">
-              {Math.round(ambientState.volume * 100)}%
-            </span>
-          </div>
-
-          {/* Sound Presets Grid */}
-          <div className="grid grid-cols-2 gap-1.5 max-h-[160px] overflow-y-auto pr-0.5">
-            {AMBIENT_SOUNDS.map((sound) => {
-              const isActive = ambientState.isPlaying && ambientState.currentSound === sound.id;
-              return (
-                <button
-                  key={sound.id}
-                  type="button"
-                  onClick={() => AmbientSoundService.toggleSound(sound.id)}
-                  className={`p-2 rounded-xl text-left transition-all border flex items-center justify-between gap-1.5 cursor-pointer ${
-                    isActive
-                      ? 'border-[var(--accent-color)] bg-[var(--accent-subtle)] text-[var(--accent-color)] font-bold shadow-xs'
-                      : 'border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] hover:border-[var(--border-hover)]'
-                  }`}
-                  title={sound.description}
-                >
-                  <span className="text-xs truncate">{sound.label}</span>
-                </button>
-              );
-            })}
           </div>
         </div>
 

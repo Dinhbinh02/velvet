@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { IBook, IProgress, INote, IComment, IHighlight, IChapterSummary, IReaderSettings, IReadingSession, ICustomFont } from '../types/book';
+import type { IBook, IProgress, INote, IComment, IHighlight, IChapterSummary, IReaderSettings, IReadingSession, ICustomFont, ITombstone } from '../types/book';
 
 export class VelvetDatabase extends Dexie {
   books!: Table<IBook, string>;
@@ -11,6 +11,7 @@ export class VelvetDatabase extends Dexie {
   settings!: Table<IReaderSettings, string>;
   sessions!: Table<IReadingSession, string>;
   customFonts!: Table<ICustomFont, string>;
+  tombstones!: Table<ITombstone, string>;
 
   constructor() {
     super('VelvetEpubDB');
@@ -36,6 +37,10 @@ export class VelvetDatabase extends Dexie {
 
     this.version(5).stores({
       chapterSummaries: '&id, bookId, href, createdAt, [bookId+href]',
+    });
+
+    this.version(6).stores({
+      tombstones: '&id, type, deletedAt',
     });
   }
 }

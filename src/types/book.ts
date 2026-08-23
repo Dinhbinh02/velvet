@@ -6,6 +6,7 @@ export interface IBook {
   coverImage?: Blob;      // Compressed cover image < 500KB stored in IndexedDB
   opfsPath: string;       // Path in OPFS: books/{id}.epub
   fileSize: number;       // Bytes
+  fileHash?: string;      // SHA-256 Content Hash for Global Cloud Deduplication
   format: 'epub';
   totalChapters?: number;
   wordCount?: number;
@@ -20,6 +21,7 @@ export interface IProgress {
   percentage: number;     // 0.0 -> 1.0 (0% - 100%)
   sectionIndex: number;   // Section index in spine
   chapterTitle?: string;
+  sectionCfiMap?: Record<string, string>; // Map of sectionHref / sectionIndex / chapterTitle to last read CFI
   updatedAt: number;
 }
 
@@ -57,6 +59,14 @@ export interface IChapterSummary {
   summaries: IHeaderSummary[];
   createdAt: number;
   updatedAt: number;
+}
+
+export type TombstoneType = 'book' | 'note' | 'highlight' | 'comment' | 'font' | 'chapterSummary';
+
+export interface ITombstone {
+  id: string;             // Entity ID that was deleted
+  type: TombstoneType;    // Entity type
+  deletedAt: number;      // Epoch timestamp of deletion
 }
 
 export interface IComment {
@@ -109,7 +119,7 @@ export interface ICustomFont {
   id: string;             // UUID or sanitized font name
   name: string;           // Display name (e.g. 'Literata', 'Lexend')
   fileName: string;       // Original file name
-  fontData: string;       // Base64 data URL (e.g. 'data:font/woff2;base64,...')
+  fontData?: string;      // Base64 data URL (e.g. 'data:font/woff2;base64,...')
   format: 'woff2' | 'woff' | 'ttf' | 'otf';
   createdAt: number;
 }

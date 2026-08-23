@@ -1,5 +1,4 @@
 {
-  "extends": "./.wxt/tsconfig.json",
   "compilerOptions": {
     "target": "ESNext",
     "useDefineForClassFields": true,
@@ -20,8 +19,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./*"],
-      "~/*": ["./*"]
+      "@/src/*": ["src/*"]
     }
   },
-  "include": ["src", "entrypoints", ".wxt/types/*.d.ts"]
+  "include": ["src", "vite.config.ts"]
 }

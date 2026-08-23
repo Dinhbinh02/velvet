@@ -46,6 +46,7 @@ export interface IAmbientSoundItem {
   category: 'radio' | 'rain' | 'water' | 'nature' | 'focus';
   description: string;
   audioUrl: string;
+  emoji?: string;
   isLiveRadio?: boolean;
 }
 

@@ -4,6 +4,7 @@ import {
   StickyNote,
   MessageSquare,
   Trash2,
+  Edit2,
   Plus,
   Bold,
   Italic,
@@ -19,6 +20,8 @@ import {
 import type { INote, IComment, IReaderSettings } from '@/src/types/book';
 import { NoteService } from '@/src/services/noteService';
 import { GeminiAIService } from '@/src/services/geminiAIService';
+import { SupabaseSyncService } from '@/src/services/supabaseSyncService';
+import { EPUBSummaryInjectorService } from '@/src/services/epubSummaryInjectorService';
 import { db } from '@/src/db/schema';
 
 interface TOCItemNodeProps {
@@ -26,6 +29,7 @@ interface TOCItemNodeProps {
   bookId?: string;
   depth?: number;
   currentChapterTitle?: string;
+  currentSectionHref?: string;
   currentCfi?: string;
   settings?: Partial<IReaderSettings>;
   onNavigate: (cfiOrHref: string) => void;
@@ -38,6 +42,7 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
   bookId,
   depth = 0,
   currentChapterTitle,
+  currentSectionHref,
   currentCfi,
   settings,
   onNavigate,
@@ -51,12 +56,11 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
 
   const itemTitle = (item.label || item.title || '').trim().toLowerCase();
   const activeTitle = (currentChapterTitle || '').trim().toLowerCase();
+
+  // Strict exact matching: prioritize exact section href match if available, otherwise strict exact label match
   const isActive = Boolean(
-    activeTitle &&
-      itemTitle &&
-      (activeTitle === itemTitle ||
-        activeTitle.includes(itemTitle) ||
-        itemTitle.includes(activeTitle))
+    (currentSectionHref && item.href && currentSectionHref === item.href) ||
+    (activeTitle && itemTitle && activeTitle === itemTitle)
   );
 
   const nodeRef = useRef<HTMLDivElement>(null);
@@ -173,10 +177,15 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
         return;
       }
 
+      // Clean out previous "KEY INSIGHTS" blocks from extracted text if regenerating
+      const cleanSectionText = sectionText
+        .replace(/KEY INSIGHTS[\s\S]*?(?=(?:Chapter|\n\s*\n[A-Z]|$))/gi, '')
+        .trim() || sectionText;
+
       // Generate structured summaries by headers with Gemini AI
       const summaries = await GeminiAIService.summarizeChapterByHeaders(
         chapterLabel,
-        sectionText,
+        cleanSectionText,
         bookTitle,
         settings?.geminiApiKey
       );
@@ -185,7 +194,14 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
         throw new Error('No summaries generated.');
       }
 
-      // Save into Dexie database (persistent part of the book)
+      // 1. Inject or overwrite directly into the EPUB zip binary in OPFS
+      const injected = await EPUBSummaryInjectorService.injectSummariesIntoEPUB(
+        bookId || '',
+        targetHref || '',
+        summaries
+      );
+
+      // 2. Also save to Dexie database for fast retrieval & synchronization
       const summaryRecordId = `${bookId || 'unknown'}_${targetHref || chapterLabel}`;
       await db.chapterSummaries.put({
         id: summaryRecordId,
@@ -197,104 +213,15 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
         updatedAt: Date.now(),
       });
 
-      // Helper function to inject summary cards into any document/frame
-      const injectSummariesToDoc = (targetDoc: Document) => {
-        if (!targetDoc) return;
-        // Remove existing summary blocks first to prevent duplicates
-        targetDoc.querySelectorAll('.velvet-chapter-summary-card').forEach((el: Element) => el.remove());
-
-        // Find all headings, titles, or strong paragraph headers
-        const allHeadings = Array.from(
-          targetDoc.querySelectorAll('h1, h2, h3, h4, h5, h6, [class*="heading"], [class*="title"], [class*="chapter"], [class*="header"], p > strong, p > b')
-        ) as HTMLElement[];
-
-        summaries.forEach((s) => {
-          if (!s.header || !s.summary) return;
-          const cleanHeader = s.header.trim().toLowerCase();
-
-          // 1. Find matching heading element
-          let targetEl = allHeadings.find((h) => {
-            const hText = (h.textContent || '').trim().toLowerCase();
-            return (
-              hText === cleanHeader ||
-              hText.includes(cleanHeader) ||
-              cleanHeader.includes(hText)
-            );
-          });
-
-          // 2. If not found in allHeadings, search all paragraphs/elements for exact header text
-          if (!targetEl) {
-            const allElements = Array.from(targetDoc.querySelectorAll('p, div, section, span')) as HTMLElement[];
-            targetEl = allElements.find((el) => {
-              const text = (el.textContent || '').trim().toLowerCase();
-              return text === cleanHeader || (text.length <= cleanHeader.length + 10 && text.includes(cleanHeader));
-            });
-          }
-
-          if (targetEl && targetEl.parentNode) {
-            // Check if card is already injected right next to it
-            const nextSibling = targetEl.nextElementSibling as HTMLElement | null;
-            if (nextSibling?.classList?.contains('velvet-chapter-summary-card')) {
-              return;
-            }
-
-            const card = targetDoc.createElement('div');
-            card.className = 'velvet-chapter-summary-card';
-            card.style.margin = '18px 0 24px 0';
-            card.style.padding = '16px 18px';
-            card.style.borderRadius = '8px';
-            card.style.borderLeft = '3px solid currentColor';
-            card.style.borderTop = '1px solid currentColor';
-            card.style.borderRight = '1px solid currentColor';
-            card.style.borderBottom = '1px solid currentColor';
-            card.style.borderColor = 'color-mix(in srgb, currentColor 18%, transparent)';
-            card.style.backgroundColor = 'color-mix(in srgb, currentColor 4%, transparent)';
-            card.style.fontFamily = 'inherit';
-            card.style.fontSize = '0.95em';
-            card.style.lineHeight = '1.6';
-            card.style.color = 'inherit';
-            card.style.boxSizing = 'border-box';
-
-            const keyPointsHtml = Array.isArray(s.keyPoints) && s.keyPoints.length > 0
-              ? `<ul style="margin: 12px 0 0 0; padding-left: 20px; list-style-type: disc; opacity: 0.92; line-height: 1.55;">
-                  ${s.keyPoints.map((kp) => `<li style="margin-bottom: 6px;">${kp}</li>`).join('')}
-                </ul>`
-              : '';
-
-            card.innerHTML = `
-              <div style="font-weight: 700; font-size: 0.9em; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.75; margin-bottom: 8px;">
-                Key Insights
-              </div>
-              <div style="opacity: 0.95; font-size: 1em; line-height: 1.6;">
-                ${s.summary}
-              </div>
-              ${keyPointsHtml}
-            `;
-
-            targetEl.parentNode.insertBefore(card, targetEl.nextSibling);
-          }
-        });
-      };
-
-      // Search and inject across all currently rendered iframes/documents
-      const allIframes: HTMLIFrameElement[] = [];
-      if (viewEl?.renderer?.shadowRoot) {
-        allIframes.push(...Array.from(viewEl.renderer.shadowRoot.querySelectorAll('iframe') as NodeListOf<HTMLIFrameElement>));
-      }
-      if (viewEl?.shadowRoot) {
-        allIframes.push(...Array.from(viewEl.shadowRoot.querySelectorAll('iframe') as NodeListOf<HTMLIFrameElement>));
-      }
-      const topLevelIframes = document.querySelectorAll('foliate-view iframe') as NodeListOf<HTMLIFrameElement>;
-      allIframes.push(...Array.from(topLevelIframes));
-
-      allIframes.forEach((ifr) => {
-        if (ifr.contentDocument) {
-          injectSummariesToDoc(ifr.contentDocument);
+      // 3. Dispatch global reload event to cleanly remount Foliate with the updated EPUB file
+      if (injected) {
+        // Trigger metadata auto-sync to sync db.chapterSummaries with Supabase
+        if (bookId) {
+          SupabaseSyncService.triggerAutoSync(3000);
         }
-      });
 
-      // Dispatch event to Foliate view so any listeners/renderers can react seamlessly
-      viewEl?.dispatchEvent(new CustomEvent('velvet:chapter-summaries-updated', { detail: { bookId, summaries } }));
+        window.dispatchEvent(new CustomEvent('velvet:reload-book', { detail: { bookId } }));
+      }
 
       setHasGenerated(true);
       setTimeout(() => setHasGenerated(false), 3000);
@@ -316,24 +243,28 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
             setIsOpen(!isOpen);
           }
         }}
-        className={`w-full flex items-center justify-between py-1.5 px-2 rounded-lg transition-all group cursor-pointer ${
+        className={`w-full flex items-center justify-between py-1.5 px-2 rounded-lg transition-colors group cursor-pointer ${
           isActive
-            ? 'bg-[var(--accent-subtle)] text-[var(--accent-color)] font-semibold shadow-xs border border-[var(--accent-color)]/30'
+            ? 'bg-[var(--accent-subtle)] text-[var(--accent-color)] font-medium border border-[var(--accent-color)]/30'
             : 'hover:bg-[var(--bg-secondary)] text-[var(--text-primary)] border border-transparent'
         }`}
         style={{ paddingLeft: `${Math.max(8, depth * 12 + 8)}px` }}
       >
         <div className="flex-1 flex items-center gap-1.5 min-w-0 pr-1 pointer-events-none">
           {isActive && (
-            <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-color)] shrink-0 animate-pulse" />
+            <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-color)] shrink-0" />
           )}
           <span
             className={`truncate ${
+              depth === 0
+                ? 'font-medium text-[13px]'
+                : 'font-medium text-[12px]'
+            } ${
               isActive
-                ? 'text-[var(--accent-color)] font-medium text-[13px]'
+                ? 'text-[var(--accent-color)] font-semibold'
                 : depth === 0
-                ? 'font-medium text-[13px] text-[var(--text-primary)] tracking-tight group-hover:text-[var(--accent-color)]'
-                : 'font-normal text-xs text-[var(--text-secondary)] leading-snug group-hover:text-[var(--accent-color)]'
+                ? 'text-[var(--text-primary)] group-hover:text-[var(--accent-color)]'
+                : 'text-[var(--text-primary)]/85 group-hover:text-[var(--accent-color)]'
             }`}
           >
             {item.label || item.title || 'Untitled Chapter'}
@@ -395,6 +326,7 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
               bookId={bookId}
               depth={depth + 1}
               currentChapterTitle={currentChapterTitle}
+              currentSectionHref={currentSectionHref}
               currentCfi={currentCfi}
               settings={settings}
               onNavigate={onNavigate}
@@ -412,6 +344,7 @@ interface NavigationDrawerProps {
   bookId: string;
   currentCfi?: string;
   currentChapterTitle?: string;
+  currentSectionHref?: string;
   tocList: any[];
   notes: INote[];
   comments: IComment[];
@@ -426,6 +359,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   bookId,
   currentCfi,
   currentChapterTitle,
+  currentSectionHref,
   tocList,
   notes,
   comments,
@@ -437,6 +371,8 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'toc' | 'notes' | 'comments'>('toc');
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
   const [newNoteContent, setNewNoteContent] = useState('');
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -494,18 +430,14 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
           const updated = content.substring(0, lineStart) + content.substring(cursor);
           setContent(updated);
           if (noteId) handleUpdateNote(noteId, updated);
+        } else {
+          const updated = content.substring(0, cursor) + '\n' + prefix + content.substring(cursor);
+          setContent(updated);
+          if (noteId) handleUpdateNote(noteId, updated);
           setTimeout(() => {
-            textarea.selectionStart = textarea.selectionEnd = lineStart;
+            textarea.selectionStart = textarea.selectionEnd = cursor + 1 + prefix.length;
           }, 0);
-          return;
         }
-        // Continue bullet list
-        const updated = content.substring(0, cursor) + '\n' + prefix + content.substring(cursor);
-        setContent(updated);
-        if (noteId) handleUpdateNote(noteId, updated);
-        setTimeout(() => {
-          textarea.selectionStart = textarea.selectionEnd = cursor + 1 + prefix.length;
-        }, 0);
         return;
       }
 
@@ -568,8 +500,20 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
     if (editingNoteId === id) setEditingNoteId(null);
   };
 
+  const handleUpdateComment = async (id: string, newText: string) => {
+    if (!newText.trim()) return;
+    await db.comments.update(id, { comment: newText.trim(), updatedAt: Date.now() });
+    SupabaseSyncService.triggerAutoSync(20000);
+    setEditingCommentId(null);
+    setEditingCommentText('');
+  };
+
   const handleDeleteComment = async (id: string) => {
+    const { TombstoneService } = await import('@/src/services/tombstoneService');
+    await TombstoneService.recordTombstone(id, 'comment');
     await db.comments.delete(id);
+    SupabaseSyncService.triggerAutoSync(15000);
+    if (editingCommentId === id) setEditingCommentId(null);
   };
 
   return (
@@ -635,6 +579,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
                   bookId={bookId}
                   depth={0}
                   currentChapterTitle={currentChapterTitle}
+                  currentSectionHref={currentSectionHref}
                   currentCfi={currentCfi}
                   settings={settings}
                   onNavigate={onNavigate}
@@ -729,7 +674,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
                   onChange={(e) => handleContentChange(e.target.value, setNewNoteContent)}
                   onKeyDown={(e) => handleEditorKeyDown(e, newNoteContent, setNewNoteContent)}
                   placeholder="Write your note here... (- for bullet, 1. for number, **bold**, *italic*)"
-                  className="w-full h-28 bg-transparent text-xs text-[var(--text-primary)] resize-none focus:outline-none placeholder:text-[var(--text-muted)] font-mono leading-relaxed"
+                  className="w-full h-28 bg-transparent text-xs text-[var(--text-primary)] resize-none focus:outline-none placeholder:text-[var(--text-muted)] font-sans leading-relaxed"
                 />
 
                 {/* Footer Controls */}
@@ -830,7 +775,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
                             (e.target as HTMLTextAreaElement).value = updated;
                           }, n.id);
                         }}
-                        className="w-full h-24 bg-transparent text-xs text-[var(--text-primary)] resize-none focus:outline-none font-mono leading-relaxed"
+                        className="w-full h-24 bg-transparent text-xs text-[var(--text-primary)] resize-none focus:outline-none font-sans leading-relaxed"
                       />
                       <div className="flex justify-end">
                         <button
@@ -885,6 +830,18 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
                           day: 'numeric',
                         })}
                       </span>
+                      {editingCommentId !== c.id && (
+                        <button
+                          onClick={() => {
+                            setEditingCommentId(c.id);
+                            setEditingCommentText(c.comment);
+                          }}
+                          className="opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-[var(--accent-color)] transition-all p-1 cursor-pointer"
+                          title="Edit comment"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       <button
                         onClick={() => handleDeleteComment(c.id)}
                         className="opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-red-500 transition-all p-1 cursor-pointer"
@@ -900,10 +857,52 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
                     &ldquo;{c.selectedText}&rdquo;
                   </blockquote>
 
-                  {/* Comment Body */}
-                  <div className="text-xs text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed">
-                    {c.comment}
-                  </div>
+                  {/* Comment Body / Editor */}
+                  {editingCommentId === c.id ? (
+                    <div className="space-y-2 pt-1">
+                      <textarea
+                        autoFocus
+                        rows={3}
+                        value={editingCommentText}
+                        onChange={(e) => setEditingCommentText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleUpdateComment(c.id, editingCommentText);
+                          }
+                        }}
+                        className="w-full text-xs p-2 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] focus:border-[var(--accent-color)] focus:outline-none text-[var(--text-primary)] resize-none font-sans"
+                      />
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => {
+                            setEditingCommentId(null);
+                            setEditingCommentText('');
+                          }}
+                          className="px-2.5 py-1 rounded-lg text-xs font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-all cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => handleUpdateComment(c.id, editingCommentText)}
+                          disabled={!editingCommentText.trim()}
+                          className="px-3 py-1 rounded-lg bg-[var(--accent-color)] text-white text-xs font-semibold hover:bg-[var(--accent-hover)] transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      onClick={() => {
+                        setEditingCommentId(c.id);
+                        setEditingCommentText(c.comment);
+                      }}
+                      className="text-xs text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed cursor-text hover:bg-[var(--bg-surface)]/50 p-1.5 rounded-lg transition-colors"
+                    >
+                      {c.comment}
+                    </div>
+                  )}
                 </div>
               ))
             ) : (

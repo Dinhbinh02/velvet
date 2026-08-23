@@ -1,6 +1,7 @@
 import { db } from '../db/schema';
 import type { INote } from '../types/book';
-import { GoogleDriveSyncService } from './googleDriveSyncService';
+import { SupabaseSyncService } from './supabaseSyncService';
+import { TombstoneService } from './tombstoneService';
 
 export class NoteService {
   /**
@@ -17,8 +18,11 @@ export class NoteService {
       updatedAt: now,
     };
 
-    await db.notes.add(note);
-    GoogleDriveSyncService.triggerAutoSync(15000);
+    await db.transaction('rw', [db.notes, db.tombstones], async () => {
+      await db.notes.add(note);
+      await db.tombstones.delete(note.id);
+    });
+    SupabaseSyncService.triggerAutoSync(15000);
     return note;
   }
 
@@ -30,15 +34,16 @@ export class NoteService {
       content,
       updatedAt: Date.now(),
     });
-    GoogleDriveSyncService.triggerAutoSync(15000);
+    SupabaseSyncService.triggerAutoSync(15000);
   }
 
   /**
    * Delete a note
    */
   static async deleteNote(noteId: string): Promise<void> {
+    await TombstoneService.recordTombstone(noteId, 'note');
     await db.notes.delete(noteId);
-    GoogleDriveSyncService.triggerAutoSync(15000);
+    SupabaseSyncService.triggerAutoSync(15000);
   }
 
   /**
