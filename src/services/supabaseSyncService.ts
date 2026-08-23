@@ -209,15 +209,19 @@ export class SupabaseSyncService {
           }
 
           const exists = await db.books.get(b.id);
-          let coverBlob: Blob | undefined = exists?.coverImage;
+          let coverBlob: Blob | string | undefined = exists?.coverImage;
 
           if (!coverBlob && b.cover_url) {
-            try {
-              const res = await fetch(b.cover_url);
-              if (res.ok) {
-                coverBlob = await res.blob();
-              }
-            } catch {}
+            if (b.cover_url.startsWith('data:')) {
+              coverBlob = b.cover_url;
+            } else {
+              try {
+                const res = await fetch(b.cover_url);
+                if (res.ok) {
+                  coverBlob = await res.blob();
+                }
+              } catch {}
+            }
           }
 
           if (!exists) {
@@ -225,7 +229,7 @@ export class SupabaseSyncService {
               id: b.id,
               title: b.title,
               author: b.author,
-              coverImage: coverBlob,
+              coverImage: (coverBlob as Blob) || undefined,
               opfsPath: `books/${b.id}.epub`,
               fileSize: b.file_size,
               format: b.format,
@@ -261,8 +265,8 @@ export class SupabaseSyncService {
                 } catch {}
               }
             }
-          } else if (!exists.coverImage && coverBlob) {
-            await db.books.update(b.id, { coverImage: coverBlob });
+          } else if (!exists.coverImage && (coverBlob || b.cover_url)) {
+            await db.books.update(b.id, { coverImage: (coverBlob as Blob) || b.cover_url });
           }
         }
       }

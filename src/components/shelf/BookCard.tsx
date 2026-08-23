@@ -34,6 +34,12 @@ export const BookCard: React.FC<BookCardProps> = ({ book, onOpen, onDelete }) =>
     let active = true;
     let createdUrl: string | null = null;
 
+    const rawCover: any = book.coverImage;
+    if (typeof rawCover === 'string' && (rawCover.startsWith('data:') || rawCover.startsWith('http') || rawCover.startsWith('blob:'))) {
+      setExtractedCoverUrl(rawCover);
+      return;
+    }
+
     if (book.coverImage && book.coverImage instanceof Blob) {
       try {
         createdUrl = URL.createObjectURL(book.coverImage);
