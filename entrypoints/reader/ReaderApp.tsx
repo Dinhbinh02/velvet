@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   BookOpen,
+  Library,
   List,
   Search,
   Maximize2,
@@ -259,51 +260,28 @@ export const ReaderApp: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Check URL params for bookId & listen to popstate
+  // Check URL params for bookId
   useEffect(() => {
-    const handleLocationChange = () => {
-      const params = new URLSearchParams(window.location.search);
-      const bookIdParam = params.get('bookId');
-      if (bookIdParam) {
-        setActiveBookId(bookIdParam);
-        setViewMode('reader');
-        setSidebarOpen(true);
-      } else {
-        setActiveBookId(null);
-        setViewMode('shelf');
-      }
-    };
-
-    handleLocationChange();
-    window.addEventListener('popstate', handleLocationChange);
-    return () => window.removeEventListener('popstate', handleLocationChange);
+    const params = new URLSearchParams(window.location.search);
+    const bookIdParam = params.get('bookId');
+    if (bookIdParam) {
+      setActiveBookId(bookIdParam);
+      setViewMode('reader');
+      setSidebarOpen(true);
+    }
   }, []);
 
   const handleOpenBook = (bookId: string) => {
     setActiveBookId(bookId);
     setViewMode('reader');
     setSidebarOpen(true);
-    // Update browser URL to include ?bookId=...
-    const url = new URL(window.location.href);
-    url.searchParams.set('bookId', bookId);
-    window.history.pushState({}, '', url.toString());
-  };
-
-  const handleBackToShelf = () => {
-    setActiveBookId(null);
-    setViewMode('shelf');
-    // Remove ?bookId from URL
-    const url = new URL(window.location.href);
-    url.searchParams.delete('bookId');
-    window.history.pushState({}, '', url.toString());
-    // Trigger auto sync when finishing a reading session
-    GoogleDriveSyncService.triggerAutoSync(2000);
   };
 
   const handleDeleteBook = async (bookId: string) => {
     await BookService.deleteBookCompletely(bookId);
     if (activeBookId === bookId) {
-      handleBackToShelf();
+      setActiveBookId(null);
+      setViewMode('shelf');
     }
   };
 
@@ -359,30 +337,68 @@ export const ReaderApp: React.FC = () => {
     >
       {/* Clean macOS / Apple Books Top Bar */}
       <header className="h-14 px-2 sm:px-4 flex items-center justify-between gap-2 border-b border-[var(--border-color)] bg-[var(--bg-surface)] shrink-0 z-30 select-none overflow-hidden">
-        {/* Left: Brand Logo & Title (Click to return home) */}
-        <button
-          type="button"
-          onClick={handleBackToShelf}
-          className="flex items-center gap-2 cursor-pointer p-1 -ml-1 rounded-xl hover:bg-[var(--bg-secondary)] transition-all group shrink-0"
-          title="Velvet Home"
-        >
-          <img
-            src="/icons/icon512.png"
-            alt="Velvet"
-            className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg shadow-sm object-cover shrink-0 group-hover:scale-105 transition-transform"
-          />
-          <span className="font-bold tracking-tight text-sm text-[var(--text-primary)]">
-            Velvet
-          </span>
-        </button>
+        {/* Left: Brand & Main Navigation Segmented Control */}
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          <div className="flex items-center gap-2">
+            <img
+              src="/icons/icon512.png"
+              alt="Velvet"
+              className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg shadow-sm object-cover shrink-0"
+            />
+            <span className="font-bold tracking-tight text-sm text-[var(--text-primary)] hidden md:inline-block">
+              Velvet
+            </span>
+          </div>
+
+          <div className="w-px h-5 bg-[var(--border-color)] mx-0.5 sm:mx-1 hidden sm:block" />
+
+          {/* Segmented Mode Switcher */}
+          <div className="flex items-center bg-[var(--bg-secondary)] border border-[var(--border-color)] p-0.5 rounded-xl text-xs font-medium shrink-0">
+            <button
+              onClick={() => {
+                setViewMode('shelf');
+                // Trigger auto sync when finishing a reading session
+                GoogleDriveSyncService.triggerAutoSync(2000);
+              }}
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                viewMode === 'shelf'
+                  ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm font-semibold border border-[var(--border-color)]'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <Library className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden xs:inline sm:inline">Library</span>
+              <span className="xs:hidden sm:hidden">Lib</span>
+              <span className="opacity-70 text-[10px]">({count})</span>
+            </button>
+
+            <button
+              onClick={() => {
+                if (activeBookId || books.length > 0) {
+                  if (!activeBookId && books.length > 0) setActiveBookId(books[0].id);
+                  setViewMode('reader');
+                }
+              }}
+              disabled={books.length === 0}
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                viewMode === 'reader'
+                  ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm font-semibold border border-[var(--border-color)]'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5 shrink-0" />
+              <span>Reading</span>
+            </button>
+          </div>
+        </div>
 
         {/* Center: Contextual Book & Chapter Title + Progress (Only in Reader Mode on wide screens) */}
         {viewMode === 'reader' && activeBook && (
           <div className="hidden md:flex flex-col items-center max-w-xs lg:max-w-sm xl:max-w-md mx-2 truncate shrink min-w-0">
-            <span className="text-xs font-bold text-[var(--text-primary)] truncate max-w-full">
+            <span className="text-[13px] sm:text-sm font-bold text-[var(--text-primary)] truncate max-w-full leading-tight">
               {activeBook.title}
             </span>
-            <div className="flex items-center gap-1.5 text-[10px] text-[var(--text-muted)] font-medium truncate max-w-full">
+            <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] font-medium truncate max-w-full mt-0.5">
               {currentLocation.chapterTitle && (
                 <span className="truncate max-w-[160px] lg:max-w-[200px]">{currentLocation.chapterTitle}</span>
               )}
@@ -764,13 +780,7 @@ export const ReaderApp: React.FC = () => {
                 />
               )}
 
-              {/* Subtle 2px Bottom Reading Progress Line (Never overlaps text) */}
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--border-color)]/30 z-10">
-                <div
-                  className="h-full bg-[var(--accent-color)]/60 transition-all duration-300"
-                  style={{ width: `${Math.round(currentLocation.percentage * 100)}%` }}
-                />
-              </div>
+
             </div>
 
             {/* Typography & Layout Settings Drawer */}

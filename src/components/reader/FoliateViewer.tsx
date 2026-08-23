@@ -270,6 +270,13 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
         color: inherit;
         font-family: inherit;
       }
+      /* Small Caps, .small, <small> and Acronyms (e.g. AD, BC) Optical Weight & Size Balance */
+      small, .small, [class*="small-caps"], [class*="smallcaps"], [class*="small"], abbr, acronym {
+        font-weight: 500 !important;
+        font-size: 0.9em !important;
+        letter-spacing: 0.02em;
+        opacity: 0.95;
+      }
       /* Footnotes, Superscript & Subscript styling preservation */
       sup, [class*="footnote"], [class*="noteref"], a[href*="note"], a[href*="fn"] {
         font-size: 0.72em !important;
@@ -666,10 +673,15 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
           // Remove any existing summary blocks first to avoid duplicate insertions
           doc.querySelectorAll('.velvet-chapter-summary-card').forEach((el: Element) => el.remove());
 
-          // Search for matching headings in the document (h1, h2, h3, h4, h5, h6, or bold titles)
-          const allHeadings = Array.from(
-            doc.querySelectorAll('h1, h2, h3, h4, h5, h6, [class*="heading"], [class*="title"], [class*="chapter"], [class*="header"], p > strong, p > b')
-          ) as HTMLElement[];
+          // Search for matching headings in the document (only real headings h1-h6 or chapter title classes)
+          const allHeadings = (Array.from(
+            doc.querySelectorAll('h1, h2, h3, h4, h5, h6, [class*="heading"], [class*="title"], [class*="chapter-title"], [class*="subchapter"]')
+          ) as HTMLElement[]).filter((el: HTMLElement) => {
+            // Exclude image captions, figures, and footnotes
+            if (el.closest('figure, figcaption, [class*="caption"], [class*="footnote"]')) return false;
+            const txt = (el.textContent || '').trim();
+            return txt.length > 0 && txt.length < 150;
+          });
 
           let insertedCount = 0;
           summaries.forEach((chSummary) => {
@@ -679,27 +691,31 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
               if (!s.header || !s.summary) return;
 
               const cleanHeader = s.header.trim().toLowerCase();
+              if (cleanHeader.length < 3) return;
 
-              // 1. Find matching heading element
+              // 1. Find exact or high-confidence matching heading element
               let targetEl = allHeadings.find((h) => {
                 const hText = (h.textContent || '').trim().toLowerCase();
-                return (
-                  hText === cleanHeader ||
-                  hText.includes(cleanHeader) ||
-                  cleanHeader.includes(hText)
-                );
+                return hText === cleanHeader || (hText.length < 100 && (hText.startsWith(cleanHeader) || cleanHeader.startsWith(hText)));
               });
 
-              // 2. If not found in allHeadings, search all elements for matching text
+              // 2. Fallback: only search standalone short paragraph/div headers (not figure/caption)
               if (!targetEl) {
-                const allElements = Array.from(doc.querySelectorAll('p, div, section, span')) as HTMLElement[];
-                targetEl = allElements.find((el) => {
+                const candidateHeaders = (Array.from(doc.querySelectorAll('p > strong:only-child, p > b:only-child, p.center, div.title, .section-title')) as HTMLElement[])
+                  .filter((el: HTMLElement) => !el.closest('figure, figcaption, [class*="caption"], [class*="footnote"]'));
+                
+                targetEl = candidateHeaders.find((el) => {
                   const text = (el.textContent || '').trim().toLowerCase();
-                  return text === cleanHeader || (text.length <= cleanHeader.length + 10 && text.includes(cleanHeader));
+                  return text === cleanHeader;
                 });
               }
 
               if (targetEl && targetEl.parentNode) {
+                // Do not insert if inside a figure, figcaption, or image block
+                if (targetEl.closest('figure, figcaption, [class*="fig"], [class*="caption"]')) {
+                  return;
+                }
+
                 // Check if summary card already placed right next to it
                 const nextSibling = targetEl.nextElementSibling as HTMLElement | null;
                 if (nextSibling?.classList?.contains('velvet-chapter-summary-card')) {

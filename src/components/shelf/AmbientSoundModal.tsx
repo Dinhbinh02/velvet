@@ -223,7 +223,7 @@ export const AmbientSoundModal: React.FC<AmbientSoundModalProps> = ({ isOpen, on
                         </span>
                       ) : (
                         <span className="w-6 h-6 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-muted)] flex items-center justify-center hover:text-[var(--text-primary)] transition-colors">
-                          <Play className="w-2.5 h-2.5 fill-current ml-0.5" />
+                          <Play className="w-2.5 h-2.5 fill-current" />
                         </span>
                       )}
                     </div>

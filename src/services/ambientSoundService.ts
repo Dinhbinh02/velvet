@@ -256,7 +256,20 @@ export class AmbientSoundService {
   private static currentSound: AmbientSoundType | null = null;
   private static isPlaying: boolean = false;
   private static isLoading: boolean = false;
-  private static currentVolume: number = 0.5; // 0.0 -> 1.0
+  private static getInitialVolume(): number {
+    try {
+      const saved = localStorage.getItem('velvet_ambient_volume');
+      if (saved !== null) {
+        const val = parseFloat(saved);
+        if (!isNaN(val) && val >= 0 && val <= 1) {
+          return val;
+        }
+      }
+    } catch {}
+    return 0.5;
+  }
+
+  private static currentVolume: number = AmbientSoundService.getInitialVolume(); // 0.0 -> 1.0
   private static listeners: Set<() => void> = new Set();
 
   static subscribe(fn: () => void): () => void {
@@ -279,6 +292,9 @@ export class AmbientSoundService {
 
   static setVolume(vol: number) {
     this.currentVolume = Math.max(0, Math.min(1, vol));
+    try {
+      localStorage.setItem('velvet_ambient_volume', String(this.currentVolume));
+    } catch {}
     if (this.audioElement) {
       this.audioElement.volume = this.currentVolume;
     }
