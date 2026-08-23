@@ -931,7 +931,7 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
         TTSService.extractSentencesFromDoc(doc);
 
         // Function to compute dynamic viewport-relative coordinates:
-        // - Clamped at TOP so it never goes under the top header.
+        // - Clamped at TOP so it never goes under the top header
         // - Clamped at BOTTOM so it never clips or goes under the bottom edge/status bar.
         const computeCoordinates = (range: Range) => {
           const rect = range.getBoundingClientRect();
@@ -954,8 +954,12 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
           // Bottom limit: max containerHeight - 16px (so bottom edge stays above bottom bar)
           const modalY = Math.max(185, Math.min(containerHeight - 16, rawTopY));
 
+          // Clamp tooltip x for mobile (screen width 360px+)
+          const minX = 75;
+          const maxX = Math.max(minX, window.innerWidth - 75);
+
           return {
-            x: Math.max(165, Math.min(window.innerWidth - 165, absX)),
+            x: Math.max(minX, Math.min(maxX, absX)),
             y: tooltipY,
             modalY,
             placement: 'top' as const,
@@ -974,30 +978,32 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
               const beforeRange = doc.createRange();
               beforeRange.setStart(doc.body || doc.documentElement, 0);
               beforeRange.setEnd(range.startContainer, range.startOffset);
-              const fullBefore = beforeRange.toString();
-              beforeText = fullBefore.slice(Math.max(0, fullBefore.length - maxCharsBefore));
-            } catch {}
+              beforeText = beforeRange.toString();
+            } catch {
+              beforeText = '';
+            }
 
-            // 2. Selected text
-            const middleText = range.toString();
+            // 2. Exact selected text
+            const selectedText = range.toString();
 
             // 3. Text after selection
             let afterText = '';
             try {
               const afterRange = doc.createRange();
               afterRange.setStart(range.endContainer, range.endOffset);
-              const endNode = doc.body || doc.documentElement;
-              afterRange.setEnd(endNode, endNode.childNodes.length);
-              const fullAfter = afterRange.toString();
-              afterText = fullAfter.slice(0, maxCharsAfter);
-            } catch {}
+              afterRange.setEnd(doc.body || doc.documentElement, (doc.body || doc.documentElement).childNodes.length);
+              afterText = afterRange.toString();
+            } catch {
+              afterText = '';
+            }
 
-            const combined = (beforeText + middleText + afterText).trim();
-            if (combined) return combined;
-          } catch {}
+            const truncatedBefore = beforeText.slice(-maxCharsBefore);
+            const truncatedAfter = afterText.slice(0, maxCharsAfter);
 
-          // Fallback to body snippet
-          return (doc.body?.innerText || doc.body?.textContent || '').slice(0, 4000).trim();
+            return `${truncatedBefore}${selectedText}${truncatedAfter}`.trim();
+          } catch {
+            return (doc.body?.innerText || doc.body?.textContent || '').slice(0, 4000).trim();
+          }
         };
 
         // Handle text selection in iframe -> show floating search tooltip button
@@ -1100,13 +1106,28 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
             setCommentModal((prev) => ({ ...prev, visible: false }));
           }
         });
+        doc.addEventListener('touchstart', () => {
+          if (commentModalRef.current.visible) {
+            setCommentModal((prev) => ({ ...prev, visible: false }));
+          }
+        }, { passive: true });
 
         doc.addEventListener('mouseup', handleSelectionCheck);
+        doc.addEventListener('touchend', () => {
+          setTimeout(handleSelectionCheck, 120);
+        }, { passive: true });
+
+        let selectionDebounceTimer: any = null;
         doc.addEventListener('selectionchange', () => {
-          const sel = doc.getSelection()?.toString()?.trim();
-          if (!sel) {
-            setFloatingTooltip((prev) => (prev.visible ? { ...prev, visible: false } : prev));
-          }
+          if (selectionDebounceTimer) clearTimeout(selectionDebounceTimer);
+          selectionDebounceTimer = setTimeout(() => {
+            const sel = doc.getSelection()?.toString()?.trim();
+            if (!sel) {
+              setFloatingTooltip((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+            } else {
+              handleSelectionCheck();
+            }
+          }, 120);
         });
 
         // Hover Card Listener for Google Docs style Comment Annotations
