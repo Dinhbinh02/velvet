@@ -82,7 +82,14 @@ export class BookService {
    * Permanently delete a book, all its associated user data, and its OPFS binary
    */
   static async deleteBookCompletely(bookId: string): Promise<void> {
-    // 4. Delete related records in Dexie
+    // 1. Delete OPFS binary file
+    await OPFSStorageService.deleteBook(bookId).catch(() => {});
+
+    // 2. Record tombstone to prevent sync revival
+    const { TombstoneService } = await import('./tombstoneService');
+    await TombstoneService.recordTombstone(bookId, 'book');
+
+    // 3. Delete related records in Dexie
     await db.transaction('rw', [db.books, db.progress, db.notes, db.highlights, db.comments, db.chapterSummaries, db.sessions], async () => {
       await Promise.all([
         db.books.delete(bookId),
@@ -95,9 +102,24 @@ export class BookService {
       ]);
     });
 
-    // 5. Delete book file from Cloudflare R2 and sync with Supabase
+    // 4. Delete directly from Supabase Database tables
+    try {
+      const { SupabaseService } = await import('./supabaseClient');
+      const supabase = await SupabaseService.getClient();
+      if (supabase) {
+        await Promise.allSettled([
+          supabase.from('books').delete().eq('id', bookId),
+          supabase.from('progress').delete().eq('book_id', bookId),
+          supabase.from('highlights').delete().eq('book_id', bookId),
+          supabase.from('notes').delete().eq('book_id', bookId),
+          supabase.from('comments').delete().eq('book_id', bookId),
+          supabase.from('chapter_summaries').delete().eq('book_id', bookId),
+        ]);
+      }
+    } catch {}
+
+    // 5. Delete book file from Cloudflare R2 / Storage
     R2StorageService.deleteBook(bookId).catch(() => {});
-    SupabaseSyncService.triggerAutoSync(3000);
   }
 
   /**

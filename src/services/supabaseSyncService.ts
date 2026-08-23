@@ -184,7 +184,7 @@ export class SupabaseSyncService {
       ]);
 
       // 2. Fetch local data from Dexie
-      const [localBooks, localProgress, localHighlights, localNotes, localComments, localSummaries, localFonts, localSettings] =
+      const [localBooks, localProgress, localHighlights, localNotes, localComments, localSummaries, localFonts, localSettings, localTombstones] =
         await Promise.all([
           db.books.toArray(),
           db.progress.toArray(),
@@ -194,11 +194,20 @@ export class SupabaseSyncService {
           db.chapterSummaries.toArray(),
           db.customFonts.toArray(),
           db.settings.get('global-settings'),
+          db.tombstones.toArray(),
         ]);
+
+      const tombstoneIds = new Set(localTombstones.map((t) => t.id));
 
       // 3. Reconcile Cloud -> Local (Dexie)
       if (cloudBooks?.length) {
         for (const b of cloudBooks) {
+          // If book was deleted locally, delete from cloud and do not restore
+          if (tombstoneIds.has(b.id)) {
+            supabase.from('books').delete().eq('id', b.id).then(() => {});
+            continue;
+          }
+
           const exists = await db.books.get(b.id);
           let coverBlob: Blob | undefined = exists?.coverImage;
 
@@ -260,6 +269,7 @@ export class SupabaseSyncService {
 
       if (cloudProgress?.length) {
         for (const p of cloudProgress) {
+          if (tombstoneIds.has(p.book_id)) continue;
           const existing = await db.progress.get(p.book_id);
           if (!existing || (p.updated_at && p.updated_at > (existing.updatedAt || 0))) {
             await db.progress.put({
@@ -276,8 +286,9 @@ export class SupabaseSyncService {
       }
 
       if (cloudHighlights?.length) {
+        const validHighlights = cloudHighlights.filter((h) => !tombstoneIds.has(h.id) && !tombstoneIds.has(h.book_id));
         await db.highlights.bulkPut(
-          cloudHighlights.map((h) => ({
+          validHighlights.map((h) => ({
             id: h.id,
             bookId: h.book_id,
             text: h.text,
@@ -288,8 +299,9 @@ export class SupabaseSyncService {
       }
 
       if (cloudNotes?.length) {
+        const validNotes = cloudNotes.filter((n) => !tombstoneIds.has(n.id) && !tombstoneIds.has(n.book_id));
         await db.notes.bulkPut(
-          cloudNotes.map((n) => ({
+          validNotes.map((n) => ({
             id: n.id,
             bookId: n.book_id,
             content: n.content || n.note || '',
@@ -301,8 +313,9 @@ export class SupabaseSyncService {
       }
 
       if (cloudComments?.length) {
+        const validComments = cloudComments.filter((c) => !tombstoneIds.has(c.id) && !tombstoneIds.has(c.book_id));
         await db.comments.bulkPut(
-          cloudComments.map((c) => ({
+          validComments.map((c) => ({
             id: c.id,
             bookId: c.book_id,
             selectedText: c.selected_text,
@@ -314,8 +327,9 @@ export class SupabaseSyncService {
       }
 
       if (cloudSummaries?.length) {
+        const validSummaries = cloudSummaries.filter((s) => !tombstoneIds.has(s.id) && !tombstoneIds.has(s.book_id));
         await db.chapterSummaries.bulkPut(
-          cloudSummaries.map((s) => ({
+          validSummaries.map((s) => ({
             id: s.id,
             bookId: s.book_id,
             href: s.href,
