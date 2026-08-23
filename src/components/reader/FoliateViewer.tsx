@@ -794,6 +794,19 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
       if (!doc) return;
       currentDocRef.current = doc;
 
+      // Ensure iOS WebKit suppresses default native callout popup on touch
+      try {
+        if (doc.head) {
+          const styleEl = doc.createElement('style');
+          styleEl.textContent = `
+            *, *::before, *::after, html, body, p, div, span, h1, h2, h3, h4, h5, h6, li {
+              -webkit-touch-callout: none !important;
+            }
+          `;
+          doc.head.appendChild(styleEl);
+        }
+      } catch {}
+
       // Re-apply latest typography styles & layout to newly rendered document
       applySettingsToRenderer();
 
@@ -2151,12 +2164,22 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
+              const text = floatingTooltip.text;
+              const context = floatingTooltip.contextText;
+
+              // Immediately dismiss native selection handles and system callout on iOS/Android
+              try {
+                const doc = currentDocRef.current;
+                doc?.getSelection()?.removeAllRanges();
+                window.getSelection()?.removeAllRanges();
+              } catch {}
+
               if (!settings?.geminiApiKey?.trim()) {
                 if (onOpenSettingsRef.current) {
                   onOpenSettingsRef.current();
                 }
-              } else if (onWordClickRef.current && floatingTooltip.text) {
-                onWordClickRef.current(floatingTooltip.text, floatingTooltip.contextText);
+              } else if (onWordClickRef.current && text) {
+                onWordClickRef.current(text, context);
               }
               setFloatingTooltip((prev) => ({ ...prev, visible: false }));
             }}

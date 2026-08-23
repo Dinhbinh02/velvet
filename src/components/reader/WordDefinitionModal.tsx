@@ -97,18 +97,18 @@ export const WordDefinitionModal: React.FC<WordDefinitionModalProps> = React.mem
             {/* Unified Header: Word, Part of Speech, IPA + Controls */}
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 flex-wrap min-w-0">
-                <h3 className="text-base sm:text-[17px] font-bold text-[var(--text-primary)] capitalize leading-tight">
+                <h3 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] capitalize leading-tight">
                   {data.word}
                 </h3>
                 {data.partOfSpeech && (
-                  <span className="text-[10px] font-semibold italic text-[var(--text-muted)] px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border-color)]">
+                  <span className="text-[11px] font-semibold italic text-[var(--text-muted)] px-2 py-0.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-color)]">
                     {data.partOfSpeech}
                   </span>
                 )}
                 {data.ipa && (
                   <span
                     style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
-                    className="text-xs text-[var(--text-secondary)] font-normal tracking-wide"
+                    className="text-[13px] text-[var(--text-secondary)] font-normal tracking-wide"
                   >
                     {data.ipa}
                   </span>
@@ -116,35 +116,35 @@ export const WordDefinitionModal: React.FC<WordDefinitionModalProps> = React.mem
               </div>
 
               {/* Action Buttons: Pronounce & Close */}
-              <div className="flex items-center gap-1 shrink-0">
+              <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   type="button"
                   onClick={handlePlayVoice}
                   disabled={isPlayingAudio}
-                  className="p-1.5 rounded-lg bg-[var(--accent-subtle)] text-[var(--accent-color)] hover:bg-[var(--accent-color)] hover:text-white transition-all cursor-pointer disabled:opacity-50"
+                  className="p-2 rounded-xl bg-[var(--accent-subtle)] text-[var(--accent-color)] hover:bg-[var(--accent-color)] hover:text-white transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center active:scale-95"
                   title="Pronounce"
                 >
-                  <Volume2 className="w-3.5 h-3.5" />
+                  <Volume2 className="w-4 h-4" />
                 </button>
                 <button
                   type="button"
                   onClick={onClose}
-                  className="p-1.5 rounded-lg hover:bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                  className="p-2 rounded-xl hover:bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center justify-center active:scale-95"
                   title="Close"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
             {/* Definition & Context Body */}
-            <div className="p-2.5 sm:p-3 rounded-xl bg-[var(--bg-secondary)]/60 border border-[var(--border-color)]/70 space-y-1.5">
-              <p className="text-xs sm:text-[13px] leading-relaxed text-[var(--text-primary)] font-medium">
+            <div className="p-3 sm:p-3.5 rounded-xl bg-[var(--bg-secondary)]/70 border border-[var(--border-color)] space-y-2">
+              <p className="text-[13.5px] sm:text-[15px] leading-relaxed text-[var(--text-primary)] font-medium">
                 {data.simpleDefinition}
               </p>
 
               {data.contextExplanation && (
-                <p className="text-xs sm:text-[12.5px] text-[var(--text-secondary)] italic border-t border-[var(--border-color)]/40 pt-1.5 mt-1.5 leading-snug">
+                <p className="text-[12.5px] sm:text-[13.5px] text-[var(--text-secondary)] italic border-t border-[var(--border-color)]/60 pt-2 mt-2 leading-relaxed">
                   {data.contextExplanation}
                 </p>
               )}
@@ -152,14 +152,14 @@ export const WordDefinitionModal: React.FC<WordDefinitionModalProps> = React.mem
 
             {/* Synonyms Pills */}
             {data.synonyms && data.synonyms.length > 0 && (
-              <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                <span className="text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)] shrink-0">
+              <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] shrink-0">
                   Synonyms:
                 </span>
                 {data.synonyms.slice(0, 4).map((syn, idx) => (
                   <span
                     key={idx}
-                    className="px-1.5 py-0.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[11px] font-medium text-[var(--text-secondary)]"
+                    className="px-2 py-0.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)] text-xs font-medium text-[var(--text-secondary)]"
                   >
                     {syn}
                   </span>
