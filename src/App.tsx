@@ -387,7 +387,7 @@ export const App: React.FC = () => {
                 setViewMode('shelf');
                 SupabaseSyncService.syncAll();
               }}
-              className="flex items-center gap-1 px-2 py-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text-primary)] transition-all cursor-pointer shrink-0 shadow-xs"
+              className="h-8 sm:h-9 px-2 sm:px-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center gap-1 shrink-0 shadow-xs"
               title="Back to Library"
             >
               <ChevronLeft className="w-4 h-4 text-[var(--accent-color)] shrink-0" />
@@ -408,7 +408,7 @@ export const App: React.FC = () => {
 
           {/* Segmented Mode Switcher (Hidden in reader mode on small screens) */}
           <div
-            className={`items-center bg-[var(--bg-secondary)] border border-[var(--border-color)] p-0.5 rounded-xl text-xs font-medium shrink-0 ${
+            className={`h-8 sm:h-9 items-center bg-[var(--bg-secondary)] border border-[var(--border-color)] p-0.5 rounded-xl text-xs font-medium shrink-0 ${
               viewMode === 'reader' ? 'hidden md:flex' : 'flex'
             }`}
           >
@@ -417,7 +417,7 @@ export const App: React.FC = () => {
                 setViewMode('shelf');
                 SupabaseSyncService.syncAll();
               }}
-              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+              className={`h-full flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 rounded-lg transition-all cursor-pointer ${
                 viewMode === 'shelf'
                   ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm font-semibold border border-[var(--border-color)]'
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -433,7 +433,7 @@ export const App: React.FC = () => {
               onClick={() => {
                 setViewMode('discover');
               }}
-              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+              className={`h-full flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 rounded-lg transition-all cursor-pointer ${
                 viewMode === 'discover'
                   ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm font-semibold border border-[var(--border-color)]'
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -451,7 +451,7 @@ export const App: React.FC = () => {
                 }
               }}
               disabled={books.length === 0}
-              className={`hidden md:flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+              className={`h-full hidden md:flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 rounded-lg transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                 viewMode === 'reader'
                   ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm font-semibold border border-[var(--border-color)]'
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
