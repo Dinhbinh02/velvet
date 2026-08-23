@@ -141,9 +141,28 @@ export class BookService {
   }
 
   /**
-   * Get File object from OPFS to load into Reader
+   * Get File object from OPFS to load into Reader (with automatic Cloud Storage fallback & cover extraction)
    */
   static async getBookFile(bookId: string): Promise<File> {
-    return await OPFSStorageService.getBookFile(bookId);
+    try {
+      return await OPFSStorageService.getBookFile(bookId);
+    } catch (err) {
+      // If missing in local browser OPFS, attempt download from Cloud Storage (R2 / Supabase Storage)
+      const book = await db.books.get(bookId);
+      const r2Key = book?.fileHash ? `books/${book.fileHash}.epub` : `books/${bookId}.epub`;
+      const downloaded = await R2StorageService.downloadBook(bookId, r2Key);
+      if (downloaded) {
+        const file = await OPFSStorageService.getBookFile(bookId);
+        // Extract and restore cover image if missing
+        try {
+          const meta = await EPUBParserService.parseMetadata(file);
+          if (meta.coverImage) {
+            await db.books.update(bookId, { coverImage: meta.coverImage });
+          }
+        } catch {}
+        return file;
+      }
+      throw err;
+    }
   }
 }

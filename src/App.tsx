@@ -491,7 +491,7 @@ export const App: React.FC = () => {
                   setSearchOpen(!searchOpen);
                   if (settingsOpen) setSettingsOpen(false);
                 }}
-                className={`p-1.5 sm:p-2 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer shrink-0 ${
+                className={`h-8 w-8 sm:h-9 sm:w-9 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center shrink-0 ${
                   searchOpen ? 'bg-[var(--accent-subtle)] text-[var(--accent-color)] border-[var(--accent-color)]' : ''
                 }`}
                 title="Search in Book"
@@ -509,7 +509,7 @@ export const App: React.FC = () => {
                     setTtsOpen(true);
                   }
                 }}
-                className={`p-1.5 sm:p-2 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer shrink-0 ${
+                className={`h-8 w-8 sm:h-9 sm:w-9 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center shrink-0 ${
                   ttsOpen ? 'bg-[var(--accent-subtle)] text-[var(--accent-color)] border-[var(--accent-color)]' : ''
                 }`}
                 title="Listen to Book (Text-To-Speech)"
@@ -523,7 +523,7 @@ export const App: React.FC = () => {
                   setSettingsOpen(!settingsOpen);
                   if (searchOpen) setSearchOpen(false);
                 }}
-                className={`p-1.5 sm:p-2 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center shrink-0 ${
+                className={`h-8 w-8 sm:h-9 sm:w-9 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center shrink-0 ${
                   settingsOpen ? 'bg-[var(--accent-subtle)] text-[var(--accent-color)] border-[var(--accent-color)]' : ''
                 }`}
                 title="Settings"
@@ -537,7 +537,7 @@ export const App: React.FC = () => {
           <button
             type="button"
             onClick={() => setAmbientModalOpen(true)}
-            className={`p-1.5 sm:p-2 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center shrink-0 ${
+            className={`h-8 w-8 sm:h-9 sm:w-9 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center shrink-0 ${
               ambientState.isPlaying
                 ? 'border-[var(--accent-color)] bg-[var(--accent-subtle)] text-[var(--accent-color)] shadow-xs'
                 : ''
@@ -554,7 +554,7 @@ export const App: React.FC = () => {
           {/* Fullscreen Toggle (Hidden on mobile) */}
           <button
             onClick={toggleFullscreen}
-            className="p-2 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer hidden sm:flex items-center justify-center shrink-0"
+            className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer hidden sm:flex items-center justify-center shrink-0"
             title="Toggle Fullscreen"
           >
             {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
@@ -564,7 +564,7 @@ export const App: React.FC = () => {
           {!isPwaStandalone && (
             <button
               onClick={() => setPwaModalOpen(true)}
-              className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all items-center gap-1.5 cursor-pointer shadow-xs shrink-0 group ${
+              className={`h-8 sm:h-9 px-2 sm:px-2.5 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs shrink-0 group ${
                 viewMode === 'reader' ? 'hidden sm:flex' : 'flex'
               }`}
               title="Install Mobile App (PWA)"
@@ -582,7 +582,7 @@ export const App: React.FC = () => {
             return (
               <button
                 onClick={() => setSyncOpen(true)}
-                className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all items-center gap-1.5 sm:gap-2 cursor-pointer shadow-sm group shrink-0 ${
+                className={`h-8 sm:h-9 px-2 sm:px-2.5 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all flex items-center justify-center gap-1.5 sm:gap-2 cursor-pointer shadow-sm group shrink-0 ${
                   viewMode === 'reader' ? 'hidden sm:flex' : 'flex'
                 }`}
                 title={supabaseUser ? `Connected as ${userName || supabaseUser.email}` : 'Sign in to sync your library'}
@@ -591,10 +591,10 @@ export const App: React.FC = () => {
                   <img
                     src={userAvatar}
                     alt={userName || 'User'}
-                    className="w-5 h-5 sm:w-5.5 sm:h-5.5 rounded-full border border-[var(--border-color)] object-cover shrink-0"
+                    className="w-4.5 h-4.5 sm:w-5 sm:h-5 rounded-full border border-[var(--border-color)] object-cover shrink-0"
                   />
                 ) : (
-                  <div className="w-5 h-5 sm:w-5.5 sm:h-5.5 rounded-full bg-[var(--accent-subtle)] text-[var(--accent-color)] flex items-center justify-center font-bold text-xs shrink-0">
+                  <div className="w-4.5 h-4.5 sm:w-5 sm:h-5 rounded-full bg-[var(--accent-subtle)] text-[var(--accent-color)] flex items-center justify-center font-bold text-xs shrink-0">
                     {supabaseUser?.email?.[0]?.toUpperCase() || <User className="w-3 h-3" />}
                   </div>
                 )}

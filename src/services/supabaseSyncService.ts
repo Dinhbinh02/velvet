@@ -213,12 +213,26 @@ export class SupabaseSyncService {
               lastReadAt: b.last_read_at,
               isFinished: b.is_finished,
             });
-            // Download EPUB binary from R2 if not present in OPFS
+            // Download EPUB binary from R2/Storage if not present in OPFS and extract cover
             try {
-              await OPFSStorageService.getBookFile(b.id);
+              const file = await OPFSStorageService.getBookFile(b.id);
+              const { EPUBParserService } = await import('./epubParser');
+              const meta = await EPUBParserService.parseMetadata(file);
+              if (meta.coverImage) {
+                await db.books.update(b.id, { coverImage: meta.coverImage });
+              }
             } catch {
-              if (b.r2_key) {
-                await R2StorageService.downloadBook(b.id, b.r2_key);
+              const r2Key = b.r2_key || `books/${b.id}.epub`;
+              const downloaded = await R2StorageService.downloadBook(b.id, r2Key);
+              if (downloaded) {
+                try {
+                  const file = await OPFSStorageService.getBookFile(b.id);
+                  const { EPUBParserService } = await import('./epubParser');
+                  const meta = await EPUBParserService.parseMetadata(file);
+                  if (meta.coverImage) {
+                    await db.books.update(b.id, { coverImage: meta.coverImage });
+                  }
+                } catch {}
               }
             }
           }
@@ -331,7 +345,13 @@ export class SupabaseSyncService {
         last_read_at: b.lastReadAt || Date.now(),
         is_finished: b.isFinished || false,
       }));
-      if (booksToUpsert.length) await supabase.from('books').upsert(booksToUpsert);
+      if (booksToUpsert.length) {
+        await supabase.from('books').upsert(booksToUpsert);
+        // Upload local book files to Cloud Storage in background
+        localBooks.forEach((b) => {
+          R2StorageService.uploadBook(b.id, undefined, b.fileHash).catch(() => {});
+        });
+      }
 
       const progressToUpsert = localProgress.map((p) => ({
         user_id: user.id,
