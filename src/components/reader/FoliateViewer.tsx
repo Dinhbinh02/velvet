@@ -958,18 +958,23 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
           const containerHeight = containerRect.height || window.innerHeight;
 
           const absX = iframeRect.left + rect.left + rect.width / 2 - containerRect.left;
-          // Actual top of the selected text block
-          const rawTopY = iframeRect.top + rect.top - containerRect.top - 8;
+          const isTouch = window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 
-          // Tooltip height is ~36px with -translate-y-full:
-          // Top limit: min 42px (so top edge is >= 6px below header)
-          // Bottom limit: max containerHeight - 12px (so tooltip stays visible above bottom edge)
-          const tooltipY = Math.max(42, Math.min(containerHeight - 12, rawTopY));
+          // On touch devices (iPhone/Android):
+          // The native system menu (Copy/Look Up) renders directly ABOVE the selection.
+          // To completely avoid collision, Velvet toolbar positions cleanly BELOW the selection!
+          const rawY = isTouch
+            ? iframeRect.top + rect.bottom - containerRect.top + 12
+            : iframeRect.top + rect.top - containerRect.top - 8;
+
+          const tooltipY = isTouch
+            ? Math.max(10, Math.min(containerHeight - 50, rawY))
+            : Math.max(42, Math.min(containerHeight - 12, rawY));
 
           // Modal height is ~175px with -translate-y-full:
           // Top limit: min 185px (so top edge of modal is >= 10px below header)
           // Bottom limit: max containerHeight - 16px (so bottom edge stays above bottom bar)
-          const modalY = Math.max(185, Math.min(containerHeight - 16, rawTopY));
+          const modalY = Math.max(185, Math.min(containerHeight - 16, iframeRect.top + rect.top - containerRect.top - 8));
 
           // Clamp tooltip x for mobile (screen width 360px+)
           const minX = 75;
@@ -979,7 +984,7 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
             x: Math.max(minX, Math.min(maxX, absX)),
             y: tooltipY,
             modalY,
-            placement: 'top' as const,
+            placement: (isTouch ? 'bottom' : 'top') as 'bottom' | 'top',
           };
         };
 
@@ -1930,7 +1935,9 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
       {floatingTooltip.visible && (
         <div
           ref={floatingTooltipDomRef}
-          className="absolute z-40 -translate-x-1/2 -translate-y-full pointer-events-auto flex items-center p-1 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-color)] shadow-xl backdrop-blur-xl"
+          className={`absolute z-40 -translate-x-1/2 pointer-events-auto flex items-center p-1 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-color)] shadow-xl backdrop-blur-xl transition-transform ${
+            floatingTooltip.placement === 'bottom' ? 'translate-y-0' : '-translate-y-full'
+          }`}
           style={{
             left: `${floatingTooltip.x}px`,
             top: `${floatingTooltip.y}px`,
