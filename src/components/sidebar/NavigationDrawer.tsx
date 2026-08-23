@@ -519,7 +519,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   return (
     <aside className="w-[80vw] max-w-[320px] sm:w-80 md:w-84 h-full shrink-0 bg-[var(--bg-surface)] border-r border-[var(--border-color)] flex flex-col select-none z-30 shadow-2xl md:shadow-none animate-in slide-in-from-left duration-200">
       {/* Unified Compact Sidebar Header (Matching h-14 Height with Main Topbar) */}
-      <div className="h-14 px-2.5 sm:px-3 flex items-center justify-between gap-1 border-b border-[var(--border-color)] bg-[var(--bg-surface)] shrink-0">
+      <div className="header-safe px-2.5 sm:px-3 flex items-center justify-between gap-1 border-b border-[var(--border-color)] bg-[var(--bg-surface)] shrink-0">
         {/* Segmented 3-in-1 Tabs Switcher */}
         <div className="flex-1 flex items-center bg-[var(--bg-secondary)] p-0.5 rounded-xl text-xs font-semibold">
           <button
