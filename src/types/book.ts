@@ -20,6 +20,7 @@ export interface IProgress {
   cfi: string;            // EPUB-CFI location string
   percentage: number;     // 0.0 -> 1.0 (0% - 100%)
   sectionIndex: number;   // Section index in spine
+  sectionFraction?: number; // 0.0 -> 1.0 fraction within the current section (fallback when CFI is stale)
   chapterTitle?: string;
   sectionCfiMap?: Record<string, string>; // Map of sectionHref / sectionIndex / chapterTitle to last read CFI
   updatedAt: number;

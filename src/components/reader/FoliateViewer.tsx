@@ -683,13 +683,21 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
           }
         }
 
-        // Fallback 1: if CFI navigation failed or no CFI, try sectionIndex
+        // Fallback 1: CFI failed – try section + fraction to land at exact position within the chapter
         if (!navigated && typeof progress?.sectionIndex === 'number' && progress.sectionIndex >= 0) {
           try {
-            await view.goTo(progress.sectionIndex);
+            const fraction = typeof progress.sectionFraction === 'number' ? progress.sectionFraction : 0;
+            if (fraction > 0) {
+              // Navigate to the exact fractional position within the section
+              await view.goTo({ section: progress.sectionIndex, fraction });
+            } else {
+              await view.goTo(progress.sectionIndex);
+            }
             navigated = true;
           } catch (e) {
-            console.warn('Could not navigate to saved sectionIndex:', progress.sectionIndex, e);
+            console.warn('Could not navigate to saved sectionIndex+fraction:', progress.sectionIndex, e);
+            // Last try: just the section index (start of chapter)
+            try { await view.goTo(progress.sectionIndex); navigated = true; } catch {}
           }
         }
 
@@ -721,7 +729,7 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
 
     view.addEventListener('relocate', ({ detail }: any) => {
       const cfi = detail.cfi;
-      const percentage = detail.fraction || 0;
+      const sectionFraction = typeof detail.fraction === 'number' ? detail.fraction : 0;
       const sectionIndex = detail.index || 0;
       const chapterTitle = detail.tocItem?.label?.trim() || undefined;
       const sectionHref = detail.tocItem?.href || undefined;
@@ -774,15 +782,16 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
         }
       }
 
-      onLocationChange?.({ cfi, percentage, chapterTitle, sectionIndex, sectionHref });
+      onLocationChange?.({ cfi, percentage: sectionFraction, chapterTitle, sectionIndex, sectionHref });
 
       // Debounce saving progress to Dexie
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = setTimeout(() => {
         BookService.updateProgress(bookId, {
           cfi,
-          percentage,
+          percentage: sectionFraction,
           sectionIndex,
+          sectionFraction,
           chapterTitle,
           sectionHref,
         });

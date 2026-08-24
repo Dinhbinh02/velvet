@@ -127,7 +127,7 @@ export class BookService {
    */
   static async updateProgress(
     bookId: string,
-    progress: { cfi: string; percentage: number; sectionIndex: number; chapterTitle?: string; sectionHref?: string }
+    progress: { cfi: string; percentage: number; sectionIndex: number; sectionFraction?: number; chapterTitle?: string; sectionHref?: string }
   ): Promise<void> {
     const now = Date.now();
     await db.transaction('rw', [db.books, db.progress], async () => {
@@ -150,10 +150,12 @@ export class BookService {
         cfi: progress.cfi,
         percentage: Math.min(1, Math.max(0, progress.percentage)),
         sectionIndex: progress.sectionIndex,
+        sectionFraction: progress.sectionFraction,
         chapterTitle: progress.chapterTitle,
         sectionCfiMap,
         updatedAt: now,
       });
+
 
       await db.books.update(bookId, {
         lastReadAt: now,
