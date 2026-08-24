@@ -121,30 +121,45 @@ export class SupabaseStorageService {
   }
 
   /**
-   * Upload a Custom Font file to Supabase Storage ('books' bucket under 'fonts/' subfolder)
+   * Upload a Custom Font file to Supabase Storage (tries 'fonts' bucket first, falls back to 'books' bucket under 'fonts/' folder)
    */
   public static async uploadFont(font: ICustomFont): Promise<string> {
     const user = await SupabaseService.getCurrentUser();
     if (!user || !font.fontData) return '';
 
     try {
-      const storageKey = `fonts/${font.id}.${font.format || 'ttf'}`;
+      const fileName = `${font.id}.${font.format || 'ttf'}`;
       const res = await fetch(font.fontData);
       const fontBlob = await res.blob();
+      const contentType = font.format === 'woff2' ? 'font/woff2' : font.format === 'woff' ? 'font/woff' : 'font/ttf';
 
       const supabase = await SupabaseService.getClient();
-      if (supabase) {
-        const { error } = await supabase.storage.from('books').upload(storageKey, fontBlob, {
+      if (!supabase) return '';
+
+      // 1. Try dedicated 'fonts' bucket first
+      try {
+        const { error: fontsErr } = await supabase.storage.from('fonts').upload(fileName, fontBlob, {
           upsert: true,
-          contentType: font.format === 'woff2' ? 'font/woff2' : font.format === 'woff' ? 'font/woff' : 'font/ttf',
+          contentType,
         });
-        if (error) {
-          console.warn('[Supabase Storage] Font upload error:', error.message);
-          return '';
+        if (!fontsErr) {
+          console.log(`[Supabase Storage] Font ${font.name} (${fileName}) uploaded to 'fonts' bucket!`);
+          return fileName;
         }
-        console.log(`[Supabase Storage] Font ${font.name} (${storageKey}) uploaded successfully!`);
-        return storageKey;
+      } catch {}
+
+      // 2. Fallback to 'books' bucket under 'fonts/' subfolder
+      const storageKey = `fonts/${fileName}`;
+      const { error } = await supabase.storage.from('books').upload(storageKey, fontBlob, {
+        upsert: true,
+        contentType,
+      });
+      if (error) {
+        console.warn('[Supabase Storage] Font upload error:', error.message);
+        return '';
       }
+      console.log(`[Supabase Storage] Font ${font.name} (${storageKey}) uploaded to 'books' bucket!`);
+      return storageKey;
     } catch (err) {
       console.warn('[Supabase Storage] Failed to upload font:', err);
     }
@@ -160,15 +175,14 @@ export class SupabaseStorageService {
       if (!supabase) return null;
 
       const cleanKey = storageKey.replace(/^books\//, '');
-      const keysToTry = [cleanKey, `fonts/${cleanKey}`, cleanKey.replace(/^fonts\//, '')];
+      const rawName = cleanKey.replace(/^fonts\//, '');
       let fontBlob: Blob | null = null;
 
-      for (const key of keysToTry) {
+      // 1. Try dedicated 'fonts' bucket
+      for (const key of [rawName, cleanKey]) {
         if (fontBlob) break;
-
-        // 1. Try public URL
         try {
-          const { data: pubData } = supabase.storage.from('books').getPublicUrl(key);
+          const { data: pubData } = supabase.storage.from('fonts').getPublicUrl(key);
           if (pubData?.publicUrl) {
             const res = await fetch(pubData.publicUrl);
             if (res.ok && res.status === 200) {
@@ -181,15 +195,46 @@ export class SupabaseStorageService {
           }
         } catch {}
 
-        // 2. Try download method
         if (!fontBlob) {
           try {
-            const { data, error } = await supabase.storage.from('books').download(key);
+            const { data, error } = await supabase.storage.from('fonts').download(key);
             if (!error && data && data.size > 100) {
               fontBlob = data;
               break;
             }
           } catch {}
+        }
+      }
+
+      // 2. Try 'books' bucket fallback
+      if (!fontBlob) {
+        const keysToTry = [`fonts/${rawName}`, cleanKey, rawName];
+        for (const key of keysToTry) {
+          if (fontBlob) break;
+
+          try {
+            const { data: pubData } = supabase.storage.from('books').getPublicUrl(key);
+            if (pubData?.publicUrl) {
+              const res = await fetch(pubData.publicUrl);
+              if (res.ok && res.status === 200) {
+                const b = await res.blob();
+                if (b && b.size > 100) {
+                  fontBlob = b;
+                  break;
+                }
+              }
+            }
+          } catch {}
+
+          if (!fontBlob) {
+            try {
+              const { data, error } = await supabase.storage.from('books').download(key);
+              if (!error && data && data.size > 100) {
+                fontBlob = data;
+                break;
+              }
+            } catch {}
+          }
         }
       }
 
@@ -210,25 +255,29 @@ export class SupabaseStorageService {
   }
 
   /**
-   * Delete a Custom Font file from Supabase Storage bucket 'books'
+   * Delete a Custom Font file from Supabase Storage
    */
   public static async deleteFont(fontId: string): Promise<void> {
     try {
-      const user = await SupabaseService.getCurrentUser();
-      if (!user) return;
       const supabase = await SupabaseService.getClient();
-      if (supabase) {
-        await supabase.storage.from('books').remove([
-          `fonts/${fontId}.ttf`,
-          `fonts/${fontId}.woff2`,
-          `fonts/${fontId}.woff`,
-          `fonts/${fontId}.otf`,
-          `users/${user.id}/fonts/${fontId}.ttf`,
-          `users/${user.id}/fonts/${fontId}.woff2`,
-          `users/${user.id}/fonts/${fontId}.woff`,
-          `users/${user.id}/fonts/${fontId}.otf`,
-        ]);
-      }
+      if (!supabase) return;
+
+      const fileVariants = [
+        `${fontId}.ttf`,
+        `${fontId}.woff2`,
+        `${fontId}.woff`,
+        `${fontId}.otf`,
+        `fonts/${fontId}.ttf`,
+        `fonts/${fontId}.woff2`,
+        `fonts/${fontId}.woff`,
+        `fonts/${fontId}.otf`,
+      ];
+
+      // Try deleting from both 'fonts' and 'books' buckets
+      await Promise.allSettled([
+        supabase.storage.from('fonts').remove(fileVariants),
+        supabase.storage.from('books').remove(fileVariants),
+      ]);
     } catch (err) {
       console.warn('[Supabase Storage] Failed to delete font:', err);
     }
