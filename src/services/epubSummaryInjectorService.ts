@@ -105,6 +105,7 @@ export class EPUBSummaryInjectorService {
         // Create velvet luxury summary card
         const card = workingDoc.createElement('div');
         card.className = 'velvet-chapter-summary-card';
+        card.setAttribute('data-velvet-ki', 'true'); // Marker for reliable removal
         card.setAttribute(
           'style',
           'margin: 18px 0 24px 0; padding: 16px 18px; border-radius: 12px; border-left: 3px solid currentColor; border-top: 1px solid currentColor; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; border-color: color-mix(in srgb, currentColor 18%, transparent); background-color: color-mix(in srgb, currentColor 4%, transparent); font-family: inherit; font-size: 0.95em; line-height: 1.6; color: inherit; box-sizing: border-box;'
@@ -136,8 +137,65 @@ export class EPUBSummaryInjectorService {
   }
 
   /**
+   * Remove all injected Key Insights cards from a specific chapter in the EPUB file in OPFS.
+   * Call this when a user deletes Key Insights for a chapter.
+   */
+  static async removeSummariesFromEPUB(bookId: string, targetHref: string): Promise<boolean> {
+    try {
+      const bookFile = await OPFSStorageService.getBookFile(bookId);
+      const arrayBuffer = await bookFile.arrayBuffer();
+      const zip = await JSZip.loadAsync(arrayBuffer);
+
+      const cleanHref = targetHref.split('#')[0].replace(/^\.\//, '');
+      let matchedPath: string | null = null;
+      for (const relativePath of Object.keys(zip.files)) {
+        if (relativePath === cleanHref || relativePath.endsWith('/' + cleanHref) || relativePath.endsWith(cleanHref)) {
+          matchedPath = relativePath;
+          break;
+        }
+      }
+
+      if (!matchedPath) return false;
+
+      const fileEntry = zip.file(matchedPath);
+      if (!fileEntry) return false;
+      const htmlContent = await fileEntry.async('string');
+
+      const parser = new DOMParser();
+      let workingDoc = parser.parseFromString(htmlContent, 'application/xhtml+xml');
+      if (workingDoc.querySelector('parsererror')) {
+        workingDoc = parser.parseFromString(htmlContent, 'text/html');
+      }
+
+      // Remove all injected Velvet Key Insights cards
+      const cards = workingDoc.querySelectorAll('[data-velvet-ki="true"], .velvet-chapter-summary-card');
+      if (cards.length === 0) return false; // Nothing to remove
+
+      cards.forEach((el) => el.remove());
+
+      const serializer = new XMLSerializer();
+      const newContent = serializer.serializeToString(workingDoc);
+      zip.file(matchedPath, newContent);
+
+      const modifiedBlob = await zip.generateAsync({
+        type: 'blob',
+        mimeType: 'application/epub+zip',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 },
+      });
+
+      await OPFSStorageService.saveBook(bookId, modifiedBlob);
+      return true;
+    } catch (err) {
+      console.error('Error removing summaries from EPUB:', err);
+      return false;
+    }
+  }
+
+  /**
    * Inject AI summaries directly into the EPUB zip binary in OPFS (Optional / Persistence)
    */
+
   static async injectSummariesIntoEPUB(
     bookId: string,
     targetHref: string,

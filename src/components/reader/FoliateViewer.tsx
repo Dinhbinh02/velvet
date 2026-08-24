@@ -952,23 +952,8 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
       };
       restoreComments();
 
-      // Restore AI Chapter Summaries / Key Insights from Dexie for this book
-      const restoreChapterSummaries = async () => {
-        try {
-          const summariesList = await db.chapterSummaries.where('bookId').equals(bookId).toArray();
-          if (summariesList.length === 0) return;
-
-          const { EPUBSummaryInjectorService } = await import('@/src/services/epubSummaryInjectorService');
-          for (const s of summariesList) {
-            if (Array.isArray(s.summaries) && s.summaries.length > 0) {
-              EPUBSummaryInjectorService.injectSummariesIntoDOM(doc, s.summaries);
-            }
-          }
-        } catch (e) {
-          console.warn('Could not restore chapter summaries:', e);
-        }
-      };
-      restoreChapterSummaries();
+      // Key Insights are now embedded directly in the EPUB file (via injectSummariesIntoEPUB)
+      // No DOM injection needed here — the content is already in the rendered HTML
 
       // Extract readable sentences for TTS playback and attach click listener
       try {
@@ -1908,9 +1893,11 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [handleShortcutTrigger]);
 
-  // Dynamic live updater for AI Chapter Summaries / Key Insights
+  // Key Insights are embedded in EPUB directly (no live DOM injection needed)
+  // velvet:summaries-updated is only dispatched in the DOM-fallback path
   useEffect(() => {
     const handleSummariesUpdated = async () => {
+      // DOM fallback path: inject into current activeDoc for this session
       const activeDoc = currentDocRef.current;
       if (activeDoc && bookId) {
         try {
