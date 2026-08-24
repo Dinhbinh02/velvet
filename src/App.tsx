@@ -831,6 +831,7 @@ export const App: React.FC = () => {
                 isLoading={isLookingUpWord}
                 error={wordLookupError}
                 fontFamily={settings.fontFamily}
+                fontSize={settings.fontSize}
                 onClose={handleCloseWordModal}
                 onOpenSettings={handleOpenGeminiSettings}
               />

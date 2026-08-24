@@ -8,6 +8,7 @@ interface WordDefinitionModalProps {
   isLoading: boolean;
   error: string | null;
   fontFamily?: string;
+  fontSize?: number;
   onClose: () => void;
   onOpenSettings?: () => void;
 }
@@ -17,10 +18,12 @@ export const WordDefinitionModal: React.FC<WordDefinitionModalProps> = React.mem
   isLoading,
   error,
   fontFamily,
+  fontSize = 18,
   onClose,
   onOpenSettings,
 }) => {
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const baseFontSize = fontSize || 18;
 
   if (!isLoading && !data && !error) return null;
 
@@ -97,18 +100,27 @@ export const WordDefinitionModal: React.FC<WordDefinitionModalProps> = React.mem
             {/* Unified Header: Word, Part of Speech, IPA + Controls */}
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 flex-wrap min-w-0">
-                <h3 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] capitalize leading-tight">
+                <h3
+                  style={{ fontSize: `${Math.round(baseFontSize * 1.25)}px` }}
+                  className="font-bold text-[var(--text-primary)] capitalize leading-tight"
+                >
                   {data.word}
                 </h3>
                 {data.partOfSpeech && (
-                  <span className="text-[11px] font-semibold italic text-[var(--text-muted)] px-2 py-0.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-color)]">
+                  <span
+                    style={{ fontSize: `${Math.max(11, Math.round(baseFontSize * 0.72))}px` }}
+                    className="font-semibold italic text-[var(--text-muted)] px-2 py-0.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-color)]"
+                  >
                     {data.partOfSpeech}
                   </span>
                 )}
                 {data.ipa && (
                   <span
-                    style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
-                    className="text-[13px] text-[var(--text-secondary)] font-normal tracking-wide"
+                    style={{
+                      fontFamily: 'Arial, Helvetica, sans-serif',
+                      fontSize: `${Math.max(12, Math.round(baseFontSize * 0.85))}px`,
+                    }}
+                    className="text-[var(--text-secondary)] font-normal tracking-wide"
                   >
                     {data.ipa}
                   </span>
@@ -139,12 +151,18 @@ export const WordDefinitionModal: React.FC<WordDefinitionModalProps> = React.mem
 
             {/* Definition & Context Body */}
             <div className="p-3 sm:p-3.5 rounded-xl bg-[var(--bg-secondary)]/70 border border-[var(--border-color)] space-y-2">
-              <p className="text-[13.5px] sm:text-[15px] leading-relaxed text-[var(--text-primary)] font-medium">
+              <p
+                style={{ fontSize: `${baseFontSize}px`, lineHeight: 1.5 }}
+                className="text-[var(--text-primary)] font-medium"
+              >
                 {data.simpleDefinition}
               </p>
 
               {data.contextExplanation && (
-                <p className="text-[12.5px] sm:text-[13.5px] text-[var(--text-secondary)] italic border-t border-[var(--border-color)]/60 pt-2 mt-2 leading-relaxed">
+                <p
+                  style={{ fontSize: `${Math.max(12, Math.round(baseFontSize * 0.9))}px`, lineHeight: 1.5 }}
+                  className="text-[var(--text-secondary)] italic border-t border-[var(--border-color)]/60 pt-2 mt-2"
+                >
                   {data.contextExplanation}
                 </p>
               )}
@@ -153,13 +171,17 @@ export const WordDefinitionModal: React.FC<WordDefinitionModalProps> = React.mem
             {/* Synonyms Pills */}
             {data.synonyms && data.synonyms.length > 0 && (
               <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] shrink-0">
+                <span
+                  style={{ fontSize: `${Math.max(10, Math.round(baseFontSize * 0.7))}px` }}
+                  className="font-bold uppercase tracking-wider text-[var(--text-muted)] shrink-0"
+                >
                   Synonyms:
                 </span>
                 {data.synonyms.slice(0, 4).map((syn, idx) => (
                   <span
                     key={idx}
-                    className="px-2 py-0.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)] text-xs font-medium text-[var(--text-secondary)]"
+                    style={{ fontSize: `${Math.max(11, Math.round(baseFontSize * 0.8))}px` }}
+                    className="px-2 py-0.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)] font-medium text-[var(--text-secondary)]"
                   >
                     {syn}
                   </span>
