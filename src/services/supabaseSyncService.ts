@@ -3,7 +3,7 @@
  * Full Offline-First architecture: Instant local Dexie writes + Instant Cloud PostgreSQL UPSERTs + Realtime WebSocket.
  */
 import { SupabaseService } from './supabaseClient';
-import { R2StorageService } from './r2StorageService';
+import { StorageService } from './storageService';
 import { db } from '../db/schema';
 import { OPFSStorageService } from './opfsStorage';
 import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -250,8 +250,8 @@ export class SupabaseSyncService {
                 }
               }
             } catch {
-              const r2Key = b.r2_key || `books/${b.id}.epub`;
-              const downloaded = await R2StorageService.downloadBook(b.id, r2Key);
+              const storageKey = b.r2_key || `books/${b.id}.epub`;
+              const downloaded = await StorageService.downloadBook(b.id, storageKey);
               if (downloaded) {
                 try {
                   const file = await OPFSStorageService.getBookFile(b.id);
@@ -407,7 +407,7 @@ export class SupabaseSyncService {
         await supabase.from('books').upsert(booksToUpsert);
         // Upload local book files to Cloud Storage in background
         localBooks.forEach((b) => {
-          R2StorageService.uploadBook(b.id, undefined, b.fileHash).catch(() => {});
+          StorageService.uploadBook(b.id, undefined, b.fileHash).catch(() => {});
         });
       }
 

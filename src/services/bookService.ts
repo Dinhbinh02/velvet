@@ -3,7 +3,7 @@ import type { IBook, IProgress } from '../types/book';
 import { OPFSStorageService } from './opfsStorage';
 import { EPUBParserService } from './epubParser';
 import { SupabaseSyncService } from './supabaseSyncService';
-import { R2StorageService } from './r2StorageService';
+import { StorageService } from './storageService';
 import { EpubOptimizerService } from './epubOptimizerService';
 
 export class BookService {
@@ -57,8 +57,8 @@ export class BookService {
       await db.tombstones.delete(bookId);
     });
 
-    // 7. Instant cloud deduplication check & background R2 backup
-    R2StorageService.uploadBook(bookId, finalBlob, optimized.fileHash).catch(() => {});
+    // 7. Cloud backup (Supabase Storage) & auto sync
+    StorageService.uploadBook(bookId, finalBlob, optimized.fileHash).catch(() => {});
     SupabaseSyncService.triggerAutoSync(3000);
 
     return bookId;
@@ -118,8 +118,8 @@ export class BookService {
       }
     } catch {}
 
-    // 5. Delete book file from Cloudflare R2 / Storage
-    R2StorageService.deleteBook(bookId).catch(() => {});
+    // 5. Delete book file from Cloud Storage
+    StorageService.deleteBook(bookId).catch(() => {});
   }
 
   /**
@@ -171,10 +171,10 @@ export class BookService {
     try {
       return await OPFSStorageService.getBookFile(bookId);
     } catch (err) {
-      // If missing in local browser OPFS, attempt download from Cloud Storage (R2 / Supabase Storage)
+      // If missing in local browser OPFS, attempt download from Cloud Storage (Supabase Storage)
       const book = await db.books.get(bookId);
-      const r2Key = book?.fileHash ? `books/${book.fileHash}.epub` : `books/${bookId}.epub`;
-      const downloaded = await R2StorageService.downloadBook(bookId, r2Key);
+      const storageKey = book?.fileHash ? `${book.fileHash}.epub` : `${bookId}.epub`;
+      const downloaded = await StorageService.downloadBook(bookId, storageKey);
       if (downloaded) {
         const file = await OPFSStorageService.getBookFile(bookId);
         // Extract and restore cover image if missing

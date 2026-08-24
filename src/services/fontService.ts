@@ -117,9 +117,9 @@ export class FontService {
       await db.tombstones.delete(id);
     });
 
-    const { R2StorageService } = await import('./r2StorageService');
+    const { StorageService } = await import('./storageService');
     const { SupabaseSyncService } = await import('./supabaseSyncService');
-    R2StorageService.uploadFont(customFont).catch(() => {});
+    StorageService.uploadFont(customFont).catch(() => {});
     SupabaseSyncService.triggerAutoSync(15000);
 
     return customFont;
@@ -142,9 +142,9 @@ export class FontService {
       }
     } catch {}
 
-    const { R2StorageService } = await import('./r2StorageService');
+    const { StorageService } = await import('./storageService');
     const { SupabaseSyncService } = await import('./supabaseSyncService');
-    R2StorageService.deleteFont(id).catch(() => {});
+    StorageService.deleteFont(id).catch(() => {});
     SupabaseSyncService.triggerAutoSync(15000);
   }
 
