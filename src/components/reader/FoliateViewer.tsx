@@ -1581,7 +1581,7 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
             justify-content: space-between;
             gap: 8px;
             max-width: 560px;
-            margin: 1.5rem auto 0 auto;
+            margin: 24px auto 0px auto;
             padding: 0;
             border: none;
             user-select: none;
