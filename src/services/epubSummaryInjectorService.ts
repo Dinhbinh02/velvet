@@ -55,7 +55,7 @@ export class EPUBSummaryInjectorService {
 
     let insertedCount = 0;
 
-    summaries.forEach((s, idx) => {
+    summaries.forEach((s) => {
       if (!s.header || !s.summary) return;
 
       const rawHeader = s.header.trim();
@@ -82,12 +82,6 @@ export class EPUBSummaryInjectorService {
             (hNorm.length >= 3 && (hNorm.includes(normHeader) || normHeader.includes(hNorm)))
           );
         });
-      }
-
-      // Match Strategy 3: Chapter title fallback for the first section summary
-      if (!targetEl && idx === 0 && allHeadings.length > 0) {
-        // Find the first meaningful heading (skip elements that are just a number if title follows)
-        targetEl = allHeadings[0];
       }
 
       // If targetEl is just a number/label (e.g. <h1>7</h1>, <p class="num">7</p>, "Chapter 7")

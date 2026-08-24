@@ -762,24 +762,15 @@ export const App: React.FC = () => {
                       if (!viewEl) return;
 
                       try {
-                        if (activeBookId) {
-                          const progress = await db.progress.get(activeBookId);
-                          const cfiMap = progress?.sectionCfiMap || {};
-
-                          const targetKey = `href_${target}`;
-                          const rawTargetKey = `href_${target.split('#')[0]}`;
-                          const savedCfi = cfiMap[targetKey] || cfiMap[rawTargetKey];
-
-                          if (savedCfi) {
-                            await viewEl.goTo(savedCfi);
-                          } else {
-                            await viewEl.goTo(target);
-                          }
-                        } else {
-                          await viewEl.goTo(target);
+                        await viewEl.goTo(target);
+                      } catch (err) {
+                        console.warn('Direct navigation failed, attempting clean fallback:', err);
+                        try {
+                          const cleanTarget = typeof target === 'string' ? target.split('#')[0] : target;
+                          await viewEl.goTo(cleanTarget);
+                        } catch (fallbackErr) {
+                          console.error('Chapter navigation failed:', fallbackErr);
                         }
-                      } catch {
-                        viewEl.goTo(target);
                       }
 
                       if (window.innerWidth < 1024) {
