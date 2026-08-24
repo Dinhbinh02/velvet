@@ -400,9 +400,10 @@ export const App: React.FC = () => {
       className="w-full h-full flex flex-col bg-[var(--bg-primary)] text-[var(--text-primary)] font-sans select-none velvet-transition overflow-hidden relative"
     >
       {/* Clean macOS / Apple Books Top Bar */}
-      <header className="header-safe px-2.5 xs:px-3.5 sm:px-8 lg:px-14 flex items-center justify-between gap-1 sm:gap-2 border-b border-[var(--border-color)] bg-[var(--bg-surface)] shrink-0 z-30 select-none">
-        {/* Left: Brand / Back button & TOC Sidebar Navigation */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0">
+      <header className="header-safe border-b border-[var(--border-color)] bg-[var(--bg-surface)] shrink-0 z-30 select-none w-full">
+        <div className="w-full max-w-[1600px] mx-auto px-2.5 xs:px-3.5 sm:px-8 lg:px-14 h-full flex items-center justify-between gap-1 sm:gap-2">
+          {/* Left: Brand / Back button & TOC Sidebar Navigation */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0">
           {viewMode === 'reader' ? (
             <div className="flex items-center gap-1.5 sm:gap-2">
               {/* Back to Library Button */}
@@ -609,6 +610,7 @@ export const App: React.FC = () => {
               </button>
             );
           })()}
+        </div>
         </div>
       </header>
 
