@@ -55,6 +55,16 @@ export class StorageService {
   }
 
   /**
+   * Download a Custom Font from active cloud storage as Base64 Data URL
+   */
+  public static async downloadFont(storageKey: string): Promise<string | null> {
+    if (ACTIVE_STORAGE_PROVIDER === 'r2') {
+      return null;
+    }
+    return SupabaseStorageService.downloadFont(storageKey);
+  }
+
+  /**
    * Delete a Custom Font from active cloud storage
    */
   public static async deleteFont(fontId: string): Promise<void> {

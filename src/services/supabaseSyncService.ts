@@ -352,12 +352,16 @@ export class SupabaseSyncService {
             continue;
           }
           const exists = await db.customFonts.get(f.id);
-          if (!exists) {
+          if (!exists || !exists.fontData) {
+            // Download font binary from cloud storage as Data URL
+            const storageKey = f.r2_key || `fonts/${f.id}.${f.format || 'ttf'}`;
+            const fontData = await StorageService.downloadFont(storageKey);
             await db.customFonts.put({
               id: f.id,
               name: f.name,
               fileName: f.file_name,
               format: f.format,
+              fontData: fontData || exists?.fontData || '',
               createdAt: f.created_at,
             });
           }
@@ -492,10 +496,17 @@ export class SupabaseSyncService {
           name: f.name,
           file_name: f.fileName,
           format: f.format,
-          r2_key: `users/${user.id}/fonts/${f.id}.${f.format || 'ttf'}`,
+          r2_key: `fonts/${f.id}.${f.format || 'ttf'}`,
           created_at: f.createdAt,
         }));
-        if (fontsToUpsert.length) await supabase.from('custom_fonts').upsert(fontsToUpsert);
+        if (fontsToUpsert.length) {
+          await supabase.from('custom_fonts').upsert(fontsToUpsert);
+          localFonts.forEach((f) => {
+            if (f.fontData) {
+              StorageService.uploadFont(f).catch(() => {});
+            }
+          });
+        }
       } catch (fErr) {
         console.warn('[Sync] Fonts upsert skipped:', fErr);
       }

@@ -7,6 +7,7 @@ import { Loader2, Bot, Highlighter, Trash2, Edit2, MessageSquare, Check, X, Volu
 import { useLiveQuery } from 'dexie-react-hooks';
 import { TTSService } from '@/src/services/ttsService';
 import { SupabaseSyncService } from '@/src/services/supabaseSyncService';
+import { FontService } from '@/src/services/fontService';
 
 // Import foliate-view web component
 import 'foliate-js/view.js';
@@ -250,27 +251,7 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
     } = settings || {};
 
     // Generate @font-face rules for all imported custom fonts with accurate weights and styles
-    const customFontFaceRules = (customFonts || [])
-      .map((f) => {
-        const formatStr = f.format === 'ttf' ? 'truetype' : f.format === 'otf' ? 'opentype' : f.format;
-        const lower = f.fileName.toLowerCase();
-        const isItalic = lower.includes('italic');
-        const isBold = lower.includes('bold');
-        const isLight = lower.includes('light');
-        const weight = isBold ? '700' : isLight ? '300' : '400';
-        const style = isItalic ? 'italic' : 'normal';
-
-        return `
-          @font-face {
-            font-family: '${f.name}';
-            src: url('${f.fontData}') format('${formatStr}');
-            font-weight: ${weight};
-            font-style: ${style};
-            font-display: swap;
-          }
-        `;
-      })
-      .join('\n');
+    const customFontFaceRules = FontService.generateFontFaceRules(customFonts || []);
 
     const palette = THEME_PALETTES[theme] || THEME_PALETTES.paper;
     const textColor = palette.text;

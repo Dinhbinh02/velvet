@@ -149,17 +149,17 @@ export class FontService {
   }
 
   /**
-   * Generate @font-face CSS block for all stored custom fonts
+   * Generate @font-face CSS block from an array of custom fonts
    */
-  static async generateFontFaceCSS(): Promise<string> {
-    const fonts = await db.customFonts.toArray();
-    if (!fonts.length) return '';
+  static generateFontFaceRules(fonts: ICustomFont[]): string {
+    if (!fonts || !fonts.length) return '';
 
     return fonts
+      .filter((f) => !!f.fontData && f.fontData.startsWith('data:'))
       .map((f) => {
         const formatStr = f.format === 'ttf' ? 'truetype' : f.format === 'otf' ? 'opentype' : f.format;
-        const lower = f.fileName.toLowerCase();
-        const isItalic = lower.includes('italic');
+        const lower = (f.fileName || f.name).toLowerCase();
+        const isItalic = lower.includes('italic') || lower.includes('oblique');
         const isBlack = lower.includes('black') || lower.includes('heavy');
         const isBold = lower.includes('bold') || isBlack;
         const isMedium = lower.includes('medium') || lower.includes('semibold');
@@ -180,5 +180,13 @@ export class FontService {
         `;
       })
       .join('\n');
+  }
+
+  /**
+   * Generate @font-face CSS block for all stored custom fonts
+   */
+  static async generateFontFaceCSS(): Promise<string> {
+    const fonts = await db.customFonts.toArray();
+    return this.generateFontFaceRules(fonts);
   }
 }

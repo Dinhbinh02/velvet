@@ -1,6 +1,6 @@
 /**
  * Supabase Storage Service for Velvet
- * Dedicated object storage provider using Supabase Storage ('books' and 'fonts' buckets)
+ * Dedicated object storage provider using Supabase Storage ('books' bucket with 'fonts/' subfolder)
  */
 import { SupabaseService } from './supabaseClient';
 import { OPFSStorageService } from './opfsStorage';
@@ -121,27 +121,28 @@ export class SupabaseStorageService {
   }
 
   /**
-   * Upload a Custom Font file to Supabase Storage bucket 'fonts'
+   * Upload a Custom Font file to Supabase Storage ('books' bucket under 'fonts/' subfolder)
    */
   public static async uploadFont(font: ICustomFont): Promise<string> {
     const user = await SupabaseService.getCurrentUser();
     if (!user || !font.fontData) return '';
 
     try {
-      const storageKey = `users/${user.id}/fonts/${font.id}.${font.format || 'ttf'}`;
+      const storageKey = `fonts/${font.id}.${font.format || 'ttf'}`;
       const res = await fetch(font.fontData);
       const fontBlob = await res.blob();
 
       const supabase = await SupabaseService.getClient();
       if (supabase) {
-        const { error } = await supabase.storage.from('fonts').upload(storageKey, fontBlob, {
+        const { error } = await supabase.storage.from('books').upload(storageKey, fontBlob, {
           upsert: true,
-          contentType: font.format === 'woff2' ? 'font/woff2' : 'font/ttf',
+          contentType: font.format === 'woff2' ? 'font/woff2' : font.format === 'woff' ? 'font/woff' : 'font/ttf',
         });
         if (error) {
           console.warn('[Supabase Storage] Font upload error:', error.message);
           return '';
         }
+        console.log(`[Supabase Storage] Font ${font.name} (${storageKey}) uploaded successfully!`);
         return storageKey;
       }
     } catch (err) {
@@ -151,7 +152,65 @@ export class SupabaseStorageService {
   }
 
   /**
-   * Delete a Custom Font file from Supabase Storage bucket 'fonts'
+   * Download a Custom Font file from Supabase Storage and return as Base64 DataURL
+   */
+  public static async downloadFont(storageKey: string): Promise<string | null> {
+    try {
+      const supabase = await SupabaseService.getClient();
+      if (!supabase) return null;
+
+      const cleanKey = storageKey.replace(/^books\//, '');
+      const keysToTry = [cleanKey, `fonts/${cleanKey}`, cleanKey.replace(/^fonts\//, '')];
+      let fontBlob: Blob | null = null;
+
+      for (const key of keysToTry) {
+        if (fontBlob) break;
+
+        // 1. Try public URL
+        try {
+          const { data: pubData } = supabase.storage.from('books').getPublicUrl(key);
+          if (pubData?.publicUrl) {
+            const res = await fetch(pubData.publicUrl);
+            if (res.ok && res.status === 200) {
+              const b = await res.blob();
+              if (b && b.size > 100) {
+                fontBlob = b;
+                break;
+              }
+            }
+          }
+        } catch {}
+
+        // 2. Try download method
+        if (!fontBlob) {
+          try {
+            const { data, error } = await supabase.storage.from('books').download(key);
+            if (!error && data && data.size > 100) {
+              fontBlob = data;
+              break;
+            }
+          } catch {}
+        }
+      }
+
+      if (fontBlob) {
+        // Convert Blob to Data URL
+        return await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(fontBlob!);
+        });
+      }
+      return null;
+    } catch (err) {
+      console.warn(`[Supabase Storage] Failed to download font ${storageKey}:`, err);
+      return null;
+    }
+  }
+
+  /**
+   * Delete a Custom Font file from Supabase Storage bucket 'books'
    */
   public static async deleteFont(fontId: string): Promise<void> {
     try {
@@ -159,7 +218,11 @@ export class SupabaseStorageService {
       if (!user) return;
       const supabase = await SupabaseService.getClient();
       if (supabase) {
-        await supabase.storage.from('fonts').remove([
+        await supabase.storage.from('books').remove([
+          `fonts/${fontId}.ttf`,
+          `fonts/${fontId}.woff2`,
+          `fonts/${fontId}.woff`,
+          `fonts/${fontId}.otf`,
           `users/${user.id}/fonts/${fontId}.ttf`,
           `users/${user.id}/fonts/${fontId}.woff2`,
           `users/${user.id}/fonts/${fontId}.woff`,
