@@ -10,6 +10,8 @@ import { EpubOptimizerService } from './epubOptimizerService';
 import type { ICustomFont } from '../types/book';
 
 export class R2StorageService {
+  private static uploadedHashes = new Set<string>();
+
   /**
    * Upload an EPUB file to Cloudflare R2 (or Supabase Storage fallback)
    * Uses SHA-256 Content-Addressable Key for instant global deduplication.
@@ -25,6 +27,11 @@ export class R2StorageService {
       // Compute hash if not provided
       const hash = fileHash || (await EpubOptimizerService.computeHash(file));
       const r2Key = `books/${hash}.epub`;
+
+      if (this.uploadedHashes.has(hash)) {
+        return r2Key;
+      }
+
       // 1. Native Cloudflare Pages R2 endpoint (/api/r2/...)
       try {
         const directRes = await fetch(`/api/r2/${r2Key}`, {
@@ -32,6 +39,7 @@ export class R2StorageService {
           body: file,
         });
         if (directRes.ok) {
+          this.uploadedHashes.add(hash);
           console.log(`[R2] Uploaded ${r2Key} successfully via Cloudflare Pages R2!`);
           return r2Key;
         }
@@ -82,8 +90,9 @@ export class R2StorageService {
           contentType: 'application/epub+zip',
         });
         if (error) {
-          console.warn('[Supabase Storage Upload Error]:', error.message || error);
+          // Silent or brief log
         } else {
+          this.uploadedHashes.add(hash);
           console.log(`[Supabase Storage] Uploaded ${cleanKey} successfully!`);
           return cleanKey;
         }

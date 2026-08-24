@@ -423,60 +423,82 @@ export class SupabaseSyncService {
       }));
       if (progressToUpsert.length) await supabase.from('progress').upsert(progressToUpsert);
 
-      const highlightsToUpsert = localHighlights.map((h) => ({
-        id: h.id,
-        user_id: user.id,
-        book_id: h.bookId,
-        text: h.text,
-        color: h.color,
-        created_at: h.createdAt,
-      }));
-      if (highlightsToUpsert.length) await supabase.from('highlights').upsert(highlightsToUpsert);
+      try {
+        const highlightsToUpsert = localHighlights.map((h) => ({
+          id: h.id,
+          user_id: user.id,
+          book_id: h.bookId,
+          text: h.text,
+          color: h.color,
+          created_at: h.createdAt,
+        }));
+        if (highlightsToUpsert.length) await supabase.from('highlights').upsert(highlightsToUpsert);
+      } catch (hErr) {
+        console.warn('[Sync] Highlights upsert skipped:', hErr);
+      }
 
-      const notesToUpsert = localNotes.map((n) => ({
-        id: n.id,
-        user_id: user.id,
-        book_id: n.bookId,
-        content: n.content,
-        chapter_title: n.chapterTitle || '',
-        created_at: n.createdAt,
-        updated_at: n.updatedAt,
-      }));
-      if (notesToUpsert.length) await supabase.from('notes').upsert(notesToUpsert);
+      try {
+        const notesToUpsert = localNotes.map((n) => ({
+          id: n.id,
+          user_id: user.id,
+          book_id: n.bookId,
+          content: n.content,
+          chapter_title: n.chapterTitle || '',
+          selected_text: n.chapterTitle || '',
+          note: n.content,
+          created_at: n.createdAt,
+          updated_at: n.updatedAt,
+        }));
+        if (notesToUpsert.length) await supabase.from('notes').upsert(notesToUpsert);
+      } catch (nErr) {
+        console.warn('[Sync] Notes upsert skipped:', nErr);
+      }
 
-      const commentsToUpsert = localComments.map((c) => ({
-        id: c.id,
-        user_id: user.id,
-        book_id: c.bookId,
-        selected_text: c.selectedText,
-        comment: c.comment,
-        created_at: c.createdAt,
-        updated_at: c.updatedAt,
-      }));
-      if (commentsToUpsert.length) await supabase.from('comments').upsert(commentsToUpsert);
+      try {
+        const commentsToUpsert = localComments.map((c) => ({
+          id: c.id,
+          user_id: user.id,
+          book_id: c.bookId,
+          selected_text: c.selectedText,
+          comment: c.comment,
+          created_at: c.createdAt,
+          updated_at: c.updatedAt,
+        }));
+        if (commentsToUpsert.length) await supabase.from('comments').upsert(commentsToUpsert);
+      } catch (cErr) {
+        console.warn('[Sync] Comments upsert skipped:', cErr);
+      }
 
-      const summariesToUpsert = localSummaries.map((s) => ({
-        id: s.id,
-        user_id: user.id,
-        book_id: s.bookId,
-        href: s.href,
-        chapter_title: s.chapterTitle,
-        summaries: s.summaries,
-        created_at: s.createdAt,
-        updated_at: s.updatedAt,
-      }));
-      if (summariesToUpsert.length) await supabase.from('chapter_summaries').upsert(summariesToUpsert);
+      try {
+        const summariesToUpsert = localSummaries.map((s) => ({
+          id: s.id,
+          user_id: user.id,
+          book_id: s.bookId,
+          href: s.href,
+          chapter_title: s.chapterTitle,
+          summaries: s.summaries,
+          created_at: s.createdAt,
+          updated_at: s.updatedAt,
+        }));
+        if (summariesToUpsert.length) await supabase.from('chapter_summaries').upsert(summariesToUpsert);
+      } catch (sErr) {
+        console.warn('[Sync] Summaries upsert skipped:', sErr);
+      }
 
-      const fontsToUpsert = localFonts.map((f) => ({
-        id: f.id,
-        user_id: user.id,
-        name: f.name,
-        file_name: f.fileName,
-        format: f.format,
-        r2_key: `users/${user.id}/fonts/${f.id}.${f.format || 'ttf'}`,
-        created_at: f.createdAt,
-      }));
-      if (fontsToUpsert.length) await supabase.from('custom_fonts').upsert(fontsToUpsert);
+      try {
+        const fontsToUpsert = localFonts.map((f) => ({
+          id: f.id,
+          user_id: user.id,
+          name: f.name,
+          file_name: f.fileName,
+          format: f.format,
+          r2_key: `users/${user.id}/fonts/${f.id}.${f.format || 'ttf'}`,
+          created_at: f.createdAt,
+        }));
+        if (fontsToUpsert.length) await supabase.from('custom_fonts').upsert(fontsToUpsert);
+      } catch (fErr) {
+        console.warn('[Sync] Fonts upsert skipped:', fErr);
+      }
 
       // Upsert profile settings
       if (localSettings) {
