@@ -237,16 +237,16 @@ export const App: React.FC = () => {
     document.documentElement.setAttribute('data-theme', theme);
     document.body.setAttribute('data-theme', theme);
 
-    const themeColors: Record<string, string> = {
-      light: '#FFFFFF',
-      paper: '#F2F2F2',
-      sepia: '#F4ECD8',
-      dark: '#121212',
-      amoled: '#000000',
-      oled: '#000000',
-      nord: '#2E3440',
+    const themeColors: Record<string, { bg: string; surface: string }> = {
+      light: { bg: '#FFFFFF', surface: '#FFFFFF' },
+      paper: { bg: '#F2F2F2', surface: '#EBEBEB' },
+      sepia: { bg: '#F4ECD8', surface: '#FAF6EE' },
+      dark: { bg: '#000000', surface: '#181818' },
+      amoled: { bg: '#000000', surface: '#161616' },
+      oled: { bg: '#000000', surface: '#161616' },
+      nord: { bg: '#2E3440', surface: '#3B4252' },
     };
-    const color = themeColors[theme] || '#F2F2F2';
+    const tConfig = themeColors[theme] || themeColors.paper;
 
     let metaThemeColor = document.querySelector('meta[name="theme-color"]');
     if (!metaThemeColor) {
@@ -254,9 +254,10 @@ export const App: React.FC = () => {
       metaThemeColor.setAttribute('name', 'theme-color');
       document.head.appendChild(metaThemeColor);
     }
-    metaThemeColor.setAttribute('content', color);
-    document.documentElement.style.backgroundColor = color;
-    document.body.style.backgroundColor = color;
+    // Match the exact header surface background color for seamless status bar blending on Safari
+    metaThemeColor.setAttribute('content', tConfig.surface);
+    document.documentElement.style.backgroundColor = tConfig.bg;
+    document.body.style.backgroundColor = tConfig.bg;
   }, [settings.theme]);
 
   // Gemini AI Word Lookup State
@@ -550,22 +551,6 @@ export const App: React.FC = () => {
             </>
           )}
 
-          {/* Reading & App Settings (Themes, Typography, Layout, Gemini Key) */}
-          <button
-            data-settings-toggle="true"
-            onClick={() => {
-              setSettingsOpen(!settingsOpen);
-              if (searchOpen) setSearchOpen(false);
-              if (sidebarOpen) setSidebarOpen(false);
-            }}
-            className={`h-8 w-8 sm:h-9 sm:w-9 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center shrink-0 ${
-              settingsOpen ? 'bg-[var(--accent-subtle)] text-[var(--accent-color)] border-[var(--accent-color)]' : ''
-            }`}
-            title="Settings (Themes, Typography & AI)"
-          >
-            <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          </button>
-
           {/* Ambient Soundscape Button & Modal Trigger */}
           <button
             type="button"
@@ -582,6 +567,22 @@ export const App: React.FC = () => {
             }
           >
             <Waves className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          </button>
+
+          {/* Reading & App Settings (Themes, Typography, Layout, Gemini Key) */}
+          <button
+            data-settings-toggle="true"
+            onClick={() => {
+              setSettingsOpen(!settingsOpen);
+              if (searchOpen) setSearchOpen(false);
+              if (sidebarOpen) setSidebarOpen(false);
+            }}
+            className={`h-8 w-8 sm:h-9 sm:w-9 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center shrink-0 ${
+              settingsOpen ? 'bg-[var(--accent-subtle)] text-[var(--accent-color)] border-[var(--accent-color)]' : ''
+            }`}
+            title="Settings (Themes, Typography & AI)"
+          >
+            <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
 
           {/* Fullscreen Toggle (Hidden on mobile) */}
@@ -648,7 +649,7 @@ export const App: React.FC = () => {
             onImportClick={() => fileInputRef.current?.click()}
           />
         ) : viewMode === 'shelf' ? (
-          <main className="flex-1 overflow-y-auto w-full max-w-[1600px] mx-auto pl-2.5 xs:pl-3.5 sm:pl-8 lg:pl-14 pr-[3px] xs:pr-1.5 sm:pr-6 lg:pr-12 py-4 sm:py-8 space-y-6 sm:space-y-8">
+          <main className="flex-1 overflow-y-auto w-full max-w-[1600px] mx-auto px-2.5 xs:px-3.5 sm:pl-8 sm:pr-6 lg:pl-14 lg:pr-12 pt-4 sm:pt-8 pb-[max(3.5rem,calc(env(safe-area-inset-bottom,0px)+2.5rem))] space-y-6 sm:space-y-8">
             {/* Section 1: Hero Banner (Vibe Avatar + Monthly Streak Heatmap) */}
               <ShelfHeroBanner
                 customAvatar={settings.customAvatar}
