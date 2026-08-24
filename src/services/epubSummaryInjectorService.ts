@@ -86,8 +86,25 @@ export class EPUBSummaryInjectorService {
 
       // Match Strategy 3: Chapter title fallback for the first section summary
       if (!targetEl && idx === 0 && allHeadings.length > 0) {
-        // First summary belongs to the chapter header
+        // Find the first meaningful heading (skip elements that are just a number if title follows)
         targetEl = allHeadings[0];
+      }
+
+      // If targetEl is just a number/label (e.g. <h1>7</h1>, <p class="num">7</p>, "Chapter 7")
+      // advance to the next sibling element (e.g. <h2>Memory Overload</h2>) so Key Insights is positioned after the full title!
+      if (targetEl && /^\s*(chapter\s*\d*|\d+|[ivxlcdm]+|ch\.\s*\d*)\s*$/i.test(targetEl.textContent || '')) {
+        let next = targetEl.nextElementSibling as HTMLElement | null;
+        while (next && (/^\s*$/i.test(next.textContent || '') || next.matches('br, hr'))) {
+          next = next.nextElementSibling as HTMLElement | null;
+        }
+        if (
+          next &&
+          (next.matches('h1, h2, h3, h4, h5, h6, [class*="title"], [class*="heading"], [class*="subtitle"], p, div') &&
+            (next.textContent || '').trim().length > 0 &&
+            (next.textContent || '').trim().length < 150)
+        ) {
+          targetEl = next;
+        }
       }
 
       if (targetEl && targetEl.parentNode) {
