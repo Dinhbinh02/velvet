@@ -324,8 +324,25 @@ export class SupabaseSyncService {
                 } catch {}
               }
             }
-          } else if (!exists.coverImage && (coverBlob || b.cover_url)) {
-            await db.books.update(b.id, { coverImage: (coverBlob as Blob) || b.cover_url });
+          } else {
+            if (!exists.coverImage && (coverBlob || b.cover_url)) {
+              await db.books.update(b.id, { coverImage: (coverBlob as Blob) || b.cover_url });
+            }
+            // Auto-download book binary to OPFS in background if missing locally
+            OPFSStorageService.getBookFile(b.id).catch(async () => {
+              const storageKey = b.r2_key || `books/${b.id}.epub`;
+              const downloaded = await StorageService.downloadBook(b.id, storageKey);
+              if (downloaded && !coverBlob) {
+                try {
+                  const file = await OPFSStorageService.getBookFile(b.id);
+                  const { EPUBParserService } = await import('./epubParser');
+                  const meta = await EPUBParserService.parseMetadata(file);
+                  if (meta.coverImage) {
+                    await db.books.update(b.id, { coverImage: meta.coverImage });
+                  }
+                } catch {}
+              }
+            });
           }
         }
       }

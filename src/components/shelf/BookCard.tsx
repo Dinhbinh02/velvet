@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MoreVertical, Trash2, BookOpen, CheckCircle, Clock, Cloud, Loader2 } from 'lucide-react';
+import { MoreVertical, Trash2, BookOpen, CheckCircle, Clock, Loader2 } from 'lucide-react';
 import type { IBook } from '@/src/types/book';
 import { useBookProgress } from '@/src/hooks/useBooks';
 
@@ -150,23 +150,6 @@ export const BookCard: React.FC<BookCardProps> = ({ book, onOpen, onDelete }) =>
           </div>
         )}
 
-        {/* Cloud Sync Status Badge */}
-        {!isDownloaded && (
-          <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/75 backdrop-blur-md text-[10px] font-semibold text-amber-300 flex items-center gap-1 shadow-xs border border-amber-400/20">
-            {isDownloading ? (
-              <>
-                <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                <span>Downloading...</span>
-              </>
-            ) : (
-              <>
-                <Cloud className="w-2.5 h-2.5" />
-                <span>Cloud</span>
-              </>
-            )}
-          </div>
-        )}
-
         {/* Progress Overlay Tag */}
         {percentage > 0 && (
           <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[10px] font-semibold text-white">
@@ -180,12 +163,12 @@ export const BookCard: React.FC<BookCardProps> = ({ book, onOpen, onDelete }) =>
             {isDownloading ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Syncing...</span>
+                <span>Opening...</span>
               </>
             ) : (
               <>
                 <BookOpen className="w-3.5 h-3.5" />
-                <span>{!isDownloaded ? 'Download & Read' : 'Read'}</span>
+                <span>Read</span>
               </>
             )}
           </span>

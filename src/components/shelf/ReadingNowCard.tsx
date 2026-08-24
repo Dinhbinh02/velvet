@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BookOpen, ArrowRight, Cloud, Loader2 } from 'lucide-react';
+import { BookOpen, ArrowRight, Loader2 } from 'lucide-react';
 import type { IBook } from '@/src/types/book';
 import { useBookProgress } from '@/src/hooks/useBooks';
 
@@ -128,22 +128,6 @@ export const ReadingNowCard: React.FC<ReadingNowCardProps> = ({ book, onOpen }) 
           </div>
         )}
 
-        {/* Cloud Sync Status Badge */}
-        {!isDownloaded && (
-          <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-black/75 backdrop-blur-md text-[9px] font-semibold text-amber-300 flex items-center gap-1 shadow-xs border border-amber-400/20">
-            {isDownloading ? (
-              <>
-                <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                <span>Syncing...</span>
-              </>
-            ) : (
-              <>
-                <Cloud className="w-2.5 h-2.5" />
-                <span>Cloud</span>
-              </>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Info & Action */}
@@ -187,11 +171,11 @@ export const ReadingNowCard: React.FC<ReadingNowCardProps> = ({ book, onOpen }) 
             {isDownloading ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Downloading Book...</span>
+                <span>Opening Book...</span>
               </>
             ) : (
               <>
-                <span>{!isDownloaded ? 'Download & Read' : 'Continue Reading'}</span>
+                <span>Continue Reading</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </>
             )}
