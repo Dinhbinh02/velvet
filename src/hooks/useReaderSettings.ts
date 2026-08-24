@@ -66,7 +66,7 @@ export function useReaderSettings() {
   const updateSettings = async (updates: Partial<IReaderSettings>) => {
     try {
       const current = (await db.settings.get(SETTINGS_ID)) || getInitialSettings();
-      const newSettings = { ...current, ...updates };
+      const newSettings: IReaderSettings = { ...current, ...updates, updatedAt: Date.now() };
       try {
         localStorage.setItem('velvet_settings_cache', JSON.stringify(newSettings));
       } catch {}

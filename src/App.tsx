@@ -231,6 +231,34 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('velvet:reload-book', handleReloadBook);
   }, []);
 
+  // Dynamic Safari iOS status bar & bottom bar theme-color synchronization
+  useEffect(() => {
+    const theme = settings.theme || 'paper';
+    document.documentElement.setAttribute('data-theme', theme);
+    document.body.setAttribute('data-theme', theme);
+
+    const themeColors: Record<string, string> = {
+      light: '#FFFFFF',
+      paper: '#F2F2F2',
+      sepia: '#F4ECD8',
+      dark: '#121212',
+      amoled: '#000000',
+      oled: '#000000',
+      nord: '#2E3440',
+    };
+    const color = themeColors[theme] || '#F2F2F2';
+
+    let metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    if (!metaThemeColor) {
+      metaThemeColor = document.createElement('meta');
+      metaThemeColor.setAttribute('name', 'theme-color');
+      document.head.appendChild(metaThemeColor);
+    }
+    metaThemeColor.setAttribute('content', color);
+    document.documentElement.style.backgroundColor = color;
+    document.body.style.backgroundColor = color;
+  }, [settings.theme]);
+
   // Gemini AI Word Lookup State
   const [wordExplanation, setWordExplanation] = useState<IWordExplanation | null>(null);
   const [isLookingUpWord, setIsLookingUpWord] = useState(false);
@@ -519,24 +547,24 @@ export const App: React.FC = () => {
               >
                 <Headphones className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
-
-              {/* Reading Settings (Themes, Typography, Layout) */}
-              <button
-                data-settings-toggle="true"
-                onClick={() => {
-                  setSettingsOpen(!settingsOpen);
-                  if (searchOpen) setSearchOpen(false);
-                  if (sidebarOpen) setSidebarOpen(false);
-                }}
-                className={`h-8 w-8 sm:h-9 sm:w-9 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center shrink-0 ${
-                  settingsOpen ? 'bg-[var(--accent-subtle)] text-[var(--accent-color)] border-[var(--accent-color)]' : ''
-                }`}
-                title="Settings"
-              >
-                <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              </button>
             </>
           )}
+
+          {/* Reading & App Settings (Themes, Typography, Layout, Gemini Key) */}
+          <button
+            data-settings-toggle="true"
+            onClick={() => {
+              setSettingsOpen(!settingsOpen);
+              if (searchOpen) setSearchOpen(false);
+              if (sidebarOpen) setSidebarOpen(false);
+            }}
+            className={`h-8 w-8 sm:h-9 sm:w-9 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center shrink-0 ${
+              settingsOpen ? 'bg-[var(--accent-subtle)] text-[var(--accent-color)] border-[var(--accent-color)]' : ''
+            }`}
+            title="Settings (Themes, Typography & AI)"
+          >
+            <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          </button>
 
           {/* Ambient Soundscape Button & Modal Trigger */}
           <button
@@ -565,17 +593,17 @@ export const App: React.FC = () => {
             {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
 
-          {/* Mobile PWA Install Button (Only visible if NOT already running as standalone PWA) */}
+          {/* Mobile PWA Install Button (Hidden on desktop since desktop browsers detect PWA natively) */}
           {!isPwaStandalone && (
             <button
               onClick={() => setPwaModalOpen(true)}
-              className={`h-8 sm:h-9 px-2 sm:px-2.5 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs shrink-0 group ${
-                viewMode === 'reader' ? 'hidden sm:flex' : 'flex'
+              className={`h-8 sm:h-9 px-2 sm:px-2.5 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all items-center justify-center gap-1.5 cursor-pointer shadow-xs shrink-0 group md:hidden ${
+                viewMode === 'reader' ? 'hidden' : 'flex'
               }`}
               title="Install Mobile App (PWA)"
             >
               <Smartphone className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[var(--accent-color)] group-hover:scale-110 transition-transform" />
-              <span className="text-xs font-semibold hidden md:inline">App</span>
+              <span className="text-xs font-semibold">App</span>
             </button>
           )}
 
@@ -858,30 +886,31 @@ export const App: React.FC = () => {
                 />
               )}
             </div>
-
-            {settingsOpen && (
-              <>
-                <div
-                  className="fixed inset-0 bg-black/25 z-40 backdrop-blur-xs animate-in fade-in duration-150"
-                  onClick={() => {
-                    setSettingsOpen(false);
-                    setSettingsTargetSection(null);
-                  }}
-                />
-                <TypographyDrawer
-                  settings={settings}
-                  targetSection={settingsTargetSection}
-                  onUpdate={updateSettings}
-                  onClose={() => {
-                    setSettingsOpen(false);
-                    setSettingsTargetSection(null);
-                  }}
-                />
-              </>
-            )}
           </div>
         )}
       </div>
+
+      {/* Global Reading & App Settings Drawer */}
+      {settingsOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/25 z-40 backdrop-blur-xs animate-in fade-in duration-150"
+            onClick={() => {
+              setSettingsOpen(false);
+              setSettingsTargetSection(null);
+            }}
+          />
+          <TypographyDrawer
+            settings={settings}
+            targetSection={settingsTargetSection}
+            onUpdate={updateSettings}
+            onClose={() => {
+              setSettingsOpen(false);
+              setSettingsTargetSection(null);
+            }}
+          />
+        </>
+      )}
 
       {/* Supabase & Cloudflare R2 Cloud Hub Modal */}
       <CloudSyncModal

@@ -75,6 +75,8 @@
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
     overscroll-behavior-y: none;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
   }
 }
 

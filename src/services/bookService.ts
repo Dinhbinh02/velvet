@@ -131,6 +131,12 @@ export class BookService {
 
     // 5. Delete book file from Cloud Storage
     StorageService.deleteBook(bookId).catch(() => {});
+
+    // 6. Trigger sync to propagate deletion tombstones across devices
+    try {
+      const { SupabaseSyncService } = await import('./supabaseSyncService');
+      SupabaseSyncService.triggerAutoSync(500);
+    } catch {}
   }
 
   /**

@@ -620,7 +620,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
       </div>
 
       {/* Tab Content Body */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+      <div className="flex-1 overflow-y-auto p-3 space-y-2 pb-[max(2.5rem,env(safe-area-inset-bottom,40px))]">
         {/* 1. Table of Contents (Hierarchical Tree View) */}
         {activeTab === 'toc' && (
           <div className="space-y-0.5">

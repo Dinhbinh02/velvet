@@ -41,6 +41,43 @@ export class SupabaseSyncService {
       .channel(`user-sync-${user.id}`)
       .on(
         'postgres_changes',
+        { event: '*', schema: 'public', table: 'books', filter: `user_id=eq.${user.id}` },
+        async (payload) => {
+          if (payload.eventType === 'DELETE') {
+            const row: any = payload.old;
+            if (row?.id) {
+              const { TombstoneService } = await import('./tombstoneService');
+              await TombstoneService.recordTombstone(row.id, 'book');
+              await Promise.allSettled([
+                db.books.delete(row.id),
+                db.progress.delete(row.id),
+                db.notes.where('bookId').equals(row.id).delete(),
+                db.highlights.where('bookId').equals(row.id).delete(),
+                db.comments.where('bookId').equals(row.id).delete(),
+                db.chapterSummaries.where('bookId').equals(row.id).delete(),
+                db.sessions.where('bookId').equals(row.id).delete(),
+                OPFSStorageService.deleteBook(row.id),
+              ]);
+            }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'custom_fonts', filter: `user_id=eq.${user.id}` },
+        async (payload) => {
+          if (payload.eventType === 'DELETE') {
+            const row: any = payload.old;
+            if (row?.id) {
+              const { TombstoneService } = await import('./tombstoneService');
+              await TombstoneService.recordTombstone(row.id, 'font');
+              await db.customFonts.delete(row.id);
+            }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
         { event: '*', schema: 'public', table: 'progress', filter: `user_id=eq.${user.id}` },
         async (payload) => {
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
@@ -184,20 +221,42 @@ export class SupabaseSyncService {
       ]);
 
       // 2. Fetch local data from Dexie
-      const [localBooks, localProgress, localHighlights, localNotes, localComments, localSummaries, localFonts, localSettings, localTombstones] =
+      const [localBooks, localFonts, localSettings] =
         await Promise.all([
           db.books.toArray(),
-          db.progress.toArray(),
-          db.highlights.toArray(),
-          db.notes.toArray(),
-          db.comments.toArray(),
-          db.chapterSummaries.toArray(),
           db.customFonts.toArray(),
           db.settings.get('global-settings'),
-          db.tombstones.toArray(),
         ]);
 
-      const tombstoneIds = new Set(localTombstones.map((t) => t.id));
+      // Merge Cloud Tombstones into local database to propagate deletions across devices
+      const cloudTombstones: any[] = Array.isArray(cloudProfile?.settings?.tombstones) ? cloudProfile.settings.tombstones : [];
+      if (cloudTombstones.length > 0) {
+        await db.tombstones.bulkPut(cloudTombstones);
+      }
+
+      const allTombstones = await db.tombstones.toArray();
+      const tombstoneIds = new Set(allTombstones.map((t) => t.id));
+
+      // Purge any local books/fonts that were deleted on another device
+      for (const b of localBooks) {
+        if (tombstoneIds.has(b.id)) {
+          await Promise.allSettled([
+            db.books.delete(b.id),
+            db.progress.delete(b.id),
+            db.notes.where('bookId').equals(b.id).delete(),
+            db.highlights.where('bookId').equals(b.id).delete(),
+            db.comments.where('bookId').equals(b.id).delete(),
+            db.chapterSummaries.where('bookId').equals(b.id).delete(),
+            db.sessions.where('bookId').equals(b.id).delete(),
+            OPFSStorageService.deleteBook(b.id),
+          ]);
+        }
+      }
+      for (const f of localFonts) {
+        if (tombstoneIds.has(f.id)) {
+          await db.customFonts.delete(f.id);
+        }
+      }
 
       // 3. Reconcile Cloud -> Local (Dexie)
       if (cloudBooks?.length) {
@@ -368,17 +427,35 @@ export class SupabaseSyncService {
         }
       }
 
-      // Merge Cloud Profile Settings
+      // Merge Cloud Profile Settings ONLY if cloud is strictly newer than local
       if (cloudProfile?.settings) {
-        await db.settings.put({
-          ...localSettings,
-          ...cloudProfile.settings,
-        });
+        const cloudSettings = cloudProfile.settings as any;
+        const localUpdatedAt = (localSettings as any)?.updatedAt || 0;
+        const cloudUpdatedAt = cloudSettings.updatedAt || (cloudProfile.updated_at ? new Date(cloudProfile.updated_at).getTime() : 0);
+
+        if (cloudUpdatedAt > localUpdatedAt) {
+          const mergedSettings = {
+            ...localSettings,
+            ...cloudSettings,
+          };
+          await db.settings.put(mergedSettings);
+          try {
+            localStorage.setItem('velvet_settings_cache', JSON.stringify(mergedSettings));
+          } catch {}
+        }
       }
 
       // 4. Push Local -> Cloud (Postgres UPSERT)
+      const activeLocalBooks = (await db.books.toArray()).filter((b) => !tombstoneIds.has(b.id));
+      const activeLocalProgress = (await db.progress.toArray()).filter((p) => !tombstoneIds.has(p.bookId));
+      const activeLocalHighlights = (await db.highlights.toArray()).filter((h) => !tombstoneIds.has(h.id) && !tombstoneIds.has(h.bookId));
+      const activeLocalNotes = (await db.notes.toArray()).filter((n) => !tombstoneIds.has(n.id) && !tombstoneIds.has(n.bookId));
+      const activeLocalComments = (await db.comments.toArray()).filter((c) => !tombstoneIds.has(c.id) && !tombstoneIds.has(c.bookId));
+      const activeLocalSummaries = (await db.chapterSummaries.toArray()).filter((s) => !tombstoneIds.has(s.id) && !tombstoneIds.has(s.bookId));
+      const activeLocalFonts = (await db.customFonts.toArray()).filter((f) => !tombstoneIds.has(f.id));
+
       const booksToUpsert = await Promise.all(
-        localBooks.map(async (b) => {
+        activeLocalBooks.map(async (b) => {
           let coverUrl = '';
           if (b.coverImage) {
             try {
@@ -410,12 +487,12 @@ export class SupabaseSyncService {
       if (booksToUpsert.length) {
         await supabase.from('books').upsert(booksToUpsert);
         // Upload local book files to Cloud Storage in background
-        localBooks.forEach((b) => {
+        activeLocalBooks.forEach((b) => {
           StorageService.uploadBook(b.id, undefined, b.fileHash).catch(() => {});
         });
       }
 
-      const progressToUpsert = localProgress.map((p) => ({
+      const progressToUpsert = activeLocalProgress.map((p) => ({
         user_id: user.id,
         book_id: p.bookId,
         cfi: p.cfi,
@@ -428,7 +505,7 @@ export class SupabaseSyncService {
       if (progressToUpsert.length) await supabase.from('progress').upsert(progressToUpsert);
 
       try {
-        const highlightsToUpsert = localHighlights.map((h) => ({
+        const highlightsToUpsert = activeLocalHighlights.map((h) => ({
           id: h.id,
           user_id: user.id,
           book_id: h.bookId,
@@ -442,7 +519,7 @@ export class SupabaseSyncService {
       }
 
       try {
-        const notesToUpsert = localNotes.map((n) => ({
+        const notesToUpsert = activeLocalNotes.map((n) => ({
           id: n.id,
           user_id: user.id,
           book_id: n.bookId,
@@ -459,7 +536,7 @@ export class SupabaseSyncService {
       }
 
       try {
-        const commentsToUpsert = localComments.map((c) => ({
+        const commentsToUpsert = activeLocalComments.map((c) => ({
           id: c.id,
           user_id: user.id,
           book_id: c.bookId,
@@ -474,7 +551,7 @@ export class SupabaseSyncService {
       }
 
       try {
-        const summariesToUpsert = localSummaries.map((s) => ({
+        const summariesToUpsert = activeLocalSummaries.map((s) => ({
           id: s.id,
           user_id: user.id,
           book_id: s.bookId,
@@ -490,7 +567,7 @@ export class SupabaseSyncService {
       }
 
       try {
-        const fontsToUpsert = localFonts.map((f) => ({
+        const fontsToUpsert = activeLocalFonts.map((f) => ({
           id: f.id,
           user_id: user.id,
           name: f.name,
@@ -501,7 +578,7 @@ export class SupabaseSyncService {
         }));
         if (fontsToUpsert.length) {
           await supabase.from('custom_fonts').upsert(fontsToUpsert);
-          localFonts.forEach((f) => {
+          activeLocalFonts.forEach((f) => {
             if (f.fontData) {
               StorageService.uploadFont(f).catch(() => {});
             }
@@ -511,13 +588,18 @@ export class SupabaseSyncService {
         console.warn('[Sync] Fonts upsert skipped:', fErr);
       }
 
-      // Upsert profile settings
-      if (localSettings) {
+      // Upsert profile settings and tombstones (fetch latest local version to avoid stale closure state)
+      const latestLocalSettings = (await db.settings.get('global-settings')) || localSettings;
+      const latestTombstones = await db.tombstones.toArray();
+      if (latestLocalSettings) {
         await supabase.from('profiles').upsert({
           id: user.id,
           email: user.email,
-          settings: localSettings,
-          updated_at: new Date().toISOString(),
+          settings: {
+            ...latestLocalSettings,
+            tombstones: latestTombstones,
+          },
+          updated_at: new Date(latestLocalSettings.updatedAt || Date.now()).toISOString(),
         });
       }
 

@@ -224,7 +224,7 @@ export const TypographyDrawer: React.FC<TypographyDrawerProps> = ({
       </div>
 
       {/* Settings Body */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 pb-[max(2.5rem,env(safe-area-inset-bottom,40px))]">
         {/* Themes Palette Swatches */}
         <div className="space-y-2.5">
           <div className="flex items-center justify-between">

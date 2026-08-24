@@ -107,6 +107,7 @@ export interface IReaderSettings {
   highlightShortcut?: string; // default 'h' or 'KeyH'
   ttsSettings?: ITTSSettings;
   customAvatar?: string;      // URL or base64 of hero avatar (GIF/image)
+  updatedAt?: number;         // Epoch timestamp of last update
 }
 
 export interface IReadingSession {

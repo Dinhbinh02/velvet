@@ -145,7 +145,7 @@ export class FontService {
     const { StorageService } = await import('./storageService');
     const { SupabaseSyncService } = await import('./supabaseSyncService');
     StorageService.deleteFont(id).catch(() => {});
-    SupabaseSyncService.triggerAutoSync(15000);
+    SupabaseSyncService.triggerAutoSync(500);
   }
 
   /**
