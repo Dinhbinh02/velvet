@@ -192,10 +192,9 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onOpenBook, onImpo
   };
 
   return (
-    <div className="w-full h-full flex flex-col overflow-y-auto bg-[var(--bg-primary)] select-none">
-      {/* Top Header Area (Apple Books Style) */}
-      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 md:px-8 pt-6 sm:pt-8 pb-4 flex flex-col gap-6">
-        {/* Title & Tagline + Search Box */}
+    <main className="flex-1 overflow-y-auto w-full bg-[var(--bg-primary)] select-none">
+      <div className="w-full max-w-[1600px] mx-auto px-2.5 xs:px-3.5 sm:px-8 lg:px-14 py-4 sm:py-8 space-y-6 sm:space-y-8">
+        {/* Top Header Area (Apple Books Style) */}
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div>
             <span className="text-xs font-semibold text-[var(--accent-color)] uppercase tracking-wider mb-1 block">
@@ -237,29 +236,29 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onOpenBook, onImpo
 
         {/* Collection Filter Breadcrumb (if "See All" is active) */}
         {selectedCollection && !submittedQuery && (
-          <div className="flex items-center justify-between p-3 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-color)]">
-            <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between p-2 sm:p-3 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-color)] gap-2 min-w-0">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
               <button
                 onClick={() => setSelectedCollection(null)}
-                className="h-8 px-3 rounded-xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-primary)] text-xs font-semibold text-[var(--text-primary)] flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                className="h-8 px-2.5 sm:px-3 rounded-xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-primary)] text-xs font-semibold text-[var(--text-primary)] flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer shrink-0 whitespace-nowrap"
               >
-                <ChevronLeft className="w-3.5 h-3.5" />
-                <span>All Collections</span>
+                <ChevronLeft className="w-3.5 h-3.5 text-[var(--accent-color)]" />
+                <span className="hidden xs:inline">All Collections</span>
+                <span className="xs:hidden">All</span>
               </button>
-              <div className="w-px h-4 bg-[var(--border-color)]" />
-              <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-[var(--text-primary)]">
-                <span>{selectedCollection.title}</span>
-                <span className="text-[var(--text-muted)] font-normal">
+              <div className="w-px h-4 bg-[var(--border-color)] shrink-0" />
+              <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                <span className="text-xs sm:text-sm font-bold text-[var(--text-primary)] truncate">
+                  {selectedCollection.title}
+                </span>
+                <span className="text-[10px] sm:text-xs text-[var(--text-muted)] font-normal shrink-0 whitespace-nowrap">
                   ({selectedCollection.books.length} books)
                 </span>
               </div>
             </div>
           </div>
         )}
-      </div>
 
-      {/* Main Body Content */}
-      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 md:px-8 pb-16 flex-1 space-y-12">
         {/* VIEW 1: SEARCH RESULTS */}
         {submittedQuery ? (
           <div className="space-y-6 pt-2">
@@ -417,27 +416,27 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onOpenBook, onImpo
               return (
                 <section key={col.id} className="space-y-4">
                   {/* Collection Header (Exact Matching Button Heights) */}
-                  <div className="flex items-end justify-between">
-                    <div>
-                      <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--text-primary)] leading-tight">
+                  <div className="flex items-start sm:items-end justify-between gap-2">
+                    <div className="min-w-0 flex-1 pr-1">
+                      <h3 className="text-lg sm:text-2xl font-bold tracking-tight text-[var(--text-primary)] leading-tight">
                         {col.title}
                       </h3>
-                      <p className="text-xs text-[var(--text-secondary)] mt-1">
+                      <p className="text-xs text-[var(--text-secondary)] mt-0.5 line-clamp-1 sm:line-clamp-none">
                         {col.subtitle}
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                       {/* Left / Right Chevron scroll controls */}
                       <button
                         onClick={() => scrollContainer(carouselId, 'left')}
-                        className="w-8 h-8 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer hidden sm:flex items-center justify-center shadow-xs"
+                        className="w-8 h-8 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer hidden sm:flex items-center justify-center shadow-xs shrink-0"
                       >
                         <ChevronLeft className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => scrollContainer(carouselId, 'right', col.id)}
-                        className="w-8 h-8 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer hidden sm:flex items-center justify-center shadow-xs"
+                        className="w-8 h-8 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer hidden sm:flex items-center justify-center shadow-xs shrink-0"
                       >
                         <ChevronRight className="w-4 h-4" />
                       </button>
@@ -445,7 +444,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onOpenBook, onImpo
                       {/* See All Button matching exact h-8 height */}
                       <button
                         onClick={() => setSelectedCollection(col)}
-                        className="h-8 px-3 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-secondary)] border border-[var(--border-color)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center gap-1 shadow-xs"
+                        className="h-8 px-2.5 sm:px-3 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-secondary)] border border-[var(--border-color)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center gap-1 shadow-xs shrink-0 whitespace-nowrap"
                       >
                         <span>See All</span>
                         <ArrowRight className="w-3.5 h-3.5" />
@@ -495,7 +494,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onOpenBook, onImpo
         )}
 
         {/* Footer: Legal & Source Attribution Disclaimer */}
-        <div className="pt-12 pb-6 border-t border-[var(--border-color)] flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-xs text-[var(--text-muted)]">
+        <div className="pt-4 border-t border-[var(--border-color)] flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs text-[var(--text-muted)]">
           <div className="space-y-1">
             <p className="font-semibold text-[var(--text-secondary)]">
               Public Domain & Open Catalog Attribution
@@ -546,7 +545,7 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onOpenBook, onImpo
           isAlreadyInLibrary={localBookTitles.has(previewBook.title.toLowerCase().trim())}
         />
       )}
-    </div>
+    </main>
   );
 
   // Book Card Render Helper

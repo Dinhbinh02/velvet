@@ -127,14 +127,14 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({ isOpen, onClose 
             <div
               className={`p-3 rounded-2xl text-xs flex items-center gap-2 ${
                 statusMessage.type === 'success'
-                  ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                  ? 'bg-[var(--accent-subtle)] text-[var(--text-primary)] border border-[var(--accent-color)]/30'
                   : statusMessage.type === 'error'
                   ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
                   : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border border-[var(--border-color)]'
               }`}
             >
               {statusMessage.type === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <CheckCircle2 className="w-4 h-4 text-[var(--accent-color)] shrink-0" />
               ) : (
                 <AlertCircle className="w-4 h-4 shrink-0" />
               )}
@@ -165,8 +165,8 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({ isOpen, onClose 
                       <div className="min-w-0">
                         <p className="font-bold text-xs text-[var(--text-primary)] truncate">{userName || supabaseUser.email}</p>
                         <p className="text-[11px] text-[var(--text-muted)] truncate">{supabaseUser.email}</p>
-                        <p className="text-[10px] text-emerald-500 flex items-center gap-1 font-medium mt-0.5">
-                          <Radio className="w-2.5 h-2.5 animate-pulse" /> Realtime Sync Active
+                        <p className="text-[10px] text-[var(--text-secondary)] flex items-center gap-1 font-medium mt-0.5">
+                          <Radio className="w-2.5 h-2.5 text-[var(--accent-color)] animate-pulse" /> Realtime Sync Active
                         </p>
                       </div>
                     </div>

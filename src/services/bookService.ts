@@ -10,17 +10,26 @@ export class BookService {
   /**
    * Import a new book into the 2-tier storage system with Smart Compression & Deduplication
    */
-  static async importBook(file: File): Promise<string> {
+  static async importBook(
+    file: File,
+    onProgress?: (step: 'optimizing' | 'parsing' | 'saving' | 'finalizing' | 'ready', percent: number) => void
+  ): Promise<string> {
     const bookId = crypto.randomUUID();
 
     // 1. Smart Compression: Optimize large images & compute SHA-256 hash
-    const optimized = await EpubOptimizerService.optimizeEpub(file);
+    onProgress?.('optimizing', 10);
+    const optimized = await EpubOptimizerService.optimizeEpub(file, (p) => {
+      // Scale optimization progress from 10% to 55%
+      onProgress?.('optimizing', Math.round(10 + p * 0.45));
+    });
     const finalBlob = optimized.blob;
 
     // 2. Extract metadata and cover from optimized blob
+    onProgress?.('parsing', 65);
     const metadata = await EPUBParserService.parseMetadata(finalBlob);
 
     // 3. Save optimized binary to local OPFS
+    onProgress?.('saving', 80);
     const opfsPath = await OPFSStorageService.saveBook(bookId, finalBlob);
 
     // 4. Create book record
@@ -51,6 +60,7 @@ export class BookService {
     };
 
     // 6. Store in Dexie within a transaction and clear tombstone
+    onProgress?.('finalizing', 92);
     await db.transaction('rw', [db.books, db.progress, db.tombstones], async () => {
       await db.books.add(newBook);
       await db.progress.add(initialProgress);
@@ -61,6 +71,7 @@ export class BookService {
     StorageService.uploadBook(bookId, finalBlob, optimized.fileHash).catch(() => {});
     SupabaseSyncService.triggerAutoSync(3000);
 
+    onProgress?.('ready', 100);
     return bookId;
   }
 

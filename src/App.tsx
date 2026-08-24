@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   BookOpen,
-  Library,
   List,
   Search,
   Maximize2,
@@ -12,7 +11,6 @@ import {
   BookPlus,
   Waves,
   User,
-  Compass,
   Smartphone,
   ChevronLeft,
 } from 'lucide-react';
@@ -20,8 +18,10 @@ import { useBooks, useBookDetails } from '@/src/hooks/useBooks';
 import { useReaderSettings } from '@/src/hooks/useReaderSettings';
 import { BookCard } from '@/src/components/shelf/BookCard';
 import { AddBookCard } from '@/src/components/shelf/AddBookCard';
+import { BookImportOverlay, type BookImportState } from '@/src/components/shelf/BookImportOverlay';
 import { ReadingNowCard } from '@/src/components/shelf/ReadingNowCard';
 import { ShelfHeroBanner } from '@/src/components/shelf/ShelfHeroBanner';
+import { ShelfDiscoverSection } from '@/src/components/shelf/ShelfDiscoverSection';
 import { BookShelfHeader, type BookStatusFilter, type BookSortOption } from '@/src/components/shelf/BookShelfHeader';
 import { AmbientSoundModal } from '@/src/components/shelf/AmbientSoundModal';
 import { AmbientSoundService } from '@/src/services/ambientSoundService';
@@ -45,12 +45,12 @@ import { db } from '@/src/db/schema';
 import type { IBook } from '@/src/types/book';
 
 export const App: React.FC = () => {
-  const { books, count } = useBooks();
+  const { books } = useBooks();
   const { settings, updateSettings } = useReaderSettings();
   const [activeBookId, setActiveBookId] = useState<string | null>(null);
   const activeBook = useBookDetails(activeBookId);
   const [viewMode, setViewMode] = useState<'shelf' | 'reader' | 'discover'>('shelf');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTargetSection, setSettingsTargetSection] = useState<string | null>(null);
@@ -101,17 +101,69 @@ export const App: React.FC = () => {
   const [isGlobalDragging, setIsGlobalDragging] = useState(false);
   const dragCounter = useRef(0);
 
+  // Book Import Loading & Feedback State
+  const [importState, setImportState] = useState<BookImportState | null>(null);
+
   const processImportFile = async (file: File) => {
     if (!file.name.toLowerCase().endsWith('.epub')) {
-      alert('Please provide a valid .epub book file.');
+      setImportState({
+        isImporting: true,
+        fileName: file.name,
+        fileSize: file.size,
+        step: 'error',
+        progressPercent: 0,
+        errorMessage: 'Please select a valid .epub book file.',
+      });
       return;
     }
+
+    setImportState({
+      isImporting: true,
+      fileName: file.name,
+      fileSize: file.size,
+      step: 'optimizing',
+      progressPercent: 10,
+      errorMessage: null,
+    });
+
     try {
-      const bookId = await BookService.importBook(file);
-      handleOpenBook(bookId);
+      const bookId = await BookService.importBook(file, (step, percent) => {
+        setImportState((prev) =>
+          prev
+            ? {
+                ...prev,
+                step: step as any,
+                progressPercent: percent,
+              }
+            : null
+        );
+      });
+
+      // Show ready state with short delay for smooth visual transition
+      setImportState((prev) =>
+        prev
+          ? {
+              ...prev,
+              step: 'ready',
+              progressPercent: 100,
+            }
+          : null
+      );
+
+      setTimeout(() => {
+        setImportState(null);
+        handleOpenBook(bookId);
+      }, 550);
     } catch (err: any) {
       console.error('Failed to import EPUB:', err);
-      alert(err.message || 'Failed to import EPUB.');
+      setImportState({
+        isImporting: true,
+        fileName: file.name,
+        fileSize: file.size,
+        step: 'error',
+        progressPercent: 0,
+        errorMessage: err?.message || 'Failed to process this EPUB book.',
+      });
     }
   };
 
@@ -272,18 +324,6 @@ export const App: React.FC = () => {
     return () => clearInterval(syncInterval);
   }, []);
 
-  // Auto-restore sidebar on desktop width (>= 1024px)
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth >= 1024) {
-        setSidebarOpen(true);
-      }
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
   // Check URL params for bookId
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -291,14 +331,14 @@ export const App: React.FC = () => {
     if (bookIdParam) {
       setActiveBookId(bookIdParam);
       setViewMode('reader');
-      setSidebarOpen(true);
+      setSidebarOpen(false);
     }
   }, []);
 
   const handleOpenBook = (bookId: string) => {
     setActiveBookId(bookId);
     setViewMode('reader');
-    setSidebarOpen(true);
+    setSidebarOpen(false);
   };
 
   const handleDeleteBook = async (bookId: string) => {
@@ -360,16 +400,50 @@ export const App: React.FC = () => {
       className="w-full h-full flex flex-col bg-[var(--bg-primary)] text-[var(--text-primary)] font-sans select-none velvet-transition overflow-hidden relative"
     >
       {/* Clean macOS / Apple Books Top Bar */}
-      <header className="header-safe px-2 sm:px-4 flex items-center justify-between gap-1 sm:gap-2 border-b border-[var(--border-color)] bg-[var(--bg-surface)] shrink-0 z-30 select-none">
-        {/* Left: Brand / Back button & Main Navigation */}
-        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 min-w-0">
+      <header className="header-safe px-2.5 xs:px-3.5 sm:px-8 lg:px-14 flex items-center justify-between gap-1 sm:gap-2 border-b border-[var(--border-color)] bg-[var(--bg-surface)] shrink-0 z-30 select-none">
+        {/* Left: Brand / Back button & TOC Sidebar Navigation */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0">
           {viewMode === 'reader' ? (
-            /* Mobile/Compact Reader Back to Library Button */
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              {/* Back to Library Button */}
+              <button
+                onClick={() => {
+                  setViewMode('shelf');
+                  SupabaseSyncService.syncAll();
+                }}
+                className="h-8 sm:h-9 px-2 sm:px-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center gap-1 shrink-0 shadow-xs"
+                title="Back to Library"
+              >
+                <ChevronLeft className="w-4 h-4 text-[var(--accent-color)] shrink-0" />
+                <span className="hidden xs:inline">Library</span>
+              </button>
+
+              {/* Sidebar TOC / Notes Button on Header */}
+              <button
+                data-sidebar-toggle="true"
+                onClick={() => {
+                  setSidebarOpen(!sidebarOpen);
+                  if (searchOpen) setSearchOpen(false);
+                  if (settingsOpen) setSettingsOpen(false);
+                }}
+                className={`h-8 sm:h-9 px-2 sm:px-2.5 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0 relative shadow-xs ${
+                  sidebarOpen ? 'bg-[var(--accent-subtle)] text-[var(--accent-color)] border-[var(--accent-color)]' : 'bg-[var(--bg-secondary)]'
+                }`}
+                title="Contents, Notes & Comments (Sidebar)"
+              >
+                <List className="w-4 h-4 text-[var(--accent-color)]" />
+                <span className="hidden sm:inline text-xs font-semibold text-[var(--text-primary)]">TOC</span>
+                {activeNotes.length + activeComments.length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[var(--accent-color)] text-white text-[9px] font-bold flex items-center justify-center shadow-xs">
+                    {activeNotes.length + activeComments.length}
+                  </span>
+                )}
+              </button>
+            </div>
+          ) : viewMode === 'discover' ? (
+            /* Back to Library Button from Discover view */
             <button
-              onClick={() => {
-                setViewMode('shelf');
-                SupabaseSyncService.syncAll();
-              }}
+              onClick={() => setViewMode('shelf')}
               className="h-8 sm:h-9 px-2 sm:px-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center gap-1 shrink-0 shadow-xs"
               title="Back to Library"
             >
@@ -383,67 +457,11 @@ export const App: React.FC = () => {
                 alt="Velvet"
                 className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg shadow-sm object-cover shrink-0"
               />
-              <span className="font-bold tracking-tight text-sm text-[var(--text-primary)] hidden md:inline-block">
+              <span className="font-bold tracking-tight text-sm text-[var(--text-primary)]">
                 Velvet
               </span>
             </div>
           )}
-
-          {/* Segmented Mode Switcher (Hidden in reader mode on small screens) */}
-          <div
-            className={`h-8 sm:h-9 items-center bg-[var(--bg-secondary)] border border-[var(--border-color)] p-0.5 rounded-xl text-xs font-medium shrink-0 ${
-              viewMode === 'reader' ? 'hidden md:flex' : 'flex'
-            }`}
-          >
-            <button
-              onClick={() => {
-                setViewMode('shelf');
-                SupabaseSyncService.syncAll();
-              }}
-              className={`h-full flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 rounded-lg transition-all cursor-pointer ${
-                viewMode === 'shelf'
-                  ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm font-semibold border border-[var(--border-color)]'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <Library className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden xs:inline">Library</span>
-              <span className="xs:hidden">Lib</span>
-              <span className="opacity-70 text-[10px]">({count})</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setViewMode('discover');
-              }}
-              className={`h-full flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 rounded-lg transition-all cursor-pointer ${
-                viewMode === 'discover'
-                  ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm font-semibold border border-[var(--border-color)]'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <Compass className="w-3.5 h-3.5 shrink-0" />
-              <span>Discover</span>
-            </button>
-
-            <button
-              onClick={() => {
-                if (activeBookId || books.length > 0) {
-                  if (!activeBookId && books.length > 0) setActiveBookId(books[0].id);
-                  setViewMode('reader');
-                }
-              }}
-              disabled={books.length === 0}
-              className={`h-full hidden md:flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 rounded-lg transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                viewMode === 'reader'
-                  ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm font-semibold border border-[var(--border-color)]'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <BookOpen className="w-3.5 h-3.5 shrink-0" />
-              <span>Reading</span>
-            </button>
-          </div>
         </div>
 
         {/* Center: Contextual Book & Chapter Title + Progress in Reader Mode */}
@@ -470,9 +488,11 @@ export const App: React.FC = () => {
             <>
               {/* In-Book Search */}
               <button
+                data-search-toggle="true"
                 onClick={() => {
                   setSearchOpen(!searchOpen);
                   if (settingsOpen) setSettingsOpen(false);
+                  if (sidebarOpen) setSidebarOpen(false);
                 }}
                 className={`h-8 w-8 sm:h-9 sm:w-9 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center shrink-0 ${
                   searchOpen ? 'bg-[var(--accent-subtle)] text-[var(--accent-color)] border-[var(--accent-color)]' : ''
@@ -506,6 +526,7 @@ export const App: React.FC = () => {
                 onClick={() => {
                   setSettingsOpen(!settingsOpen);
                   if (searchOpen) setSearchOpen(false);
+                  if (sidebarOpen) setSidebarOpen(false);
                 }}
                 className={`h-8 w-8 sm:h-9 sm:w-9 rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center shrink-0 ${
                   settingsOpen ? 'bg-[var(--accent-subtle)] text-[var(--accent-color)] border-[var(--accent-color)]' : ''
@@ -600,7 +621,7 @@ export const App: React.FC = () => {
           />
         ) : viewMode === 'shelf' ? (
           <main className="flex-1 overflow-y-auto w-full">
-            <div className="w-full max-w-[1600px] mx-auto px-2.5 xs:px-3.5 sm:px-8 lg:px-14 py-3 sm:py-8 space-y-4 sm:space-y-8">
+            <div className="w-full max-w-[1600px] mx-auto px-2.5 xs:px-3.5 sm:px-8 lg:px-14 py-4 sm:py-8 space-y-6 sm:space-y-8">
               {/* Section 1: Hero Banner (Vibe Avatar + Monthly Streak Heatmap) */}
               <ShelfHeroBanner
                 customAvatar={settings.customAvatar}
@@ -609,8 +630,8 @@ export const App: React.FC = () => {
 
               {/* Section 2: Reading Now */}
               {recentBook && (
-                <section className="flex flex-col space-y-2.5">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                <section className="space-y-3.5">
+                  <h3 className="text-sm sm:text-base font-bold uppercase tracking-wider text-[var(--text-muted)]">
                     Reading Now
                   </h3>
                   <ReadingNowCard book={recentBook} onOpen={handleOpenBook} />
@@ -618,10 +639,10 @@ export const App: React.FC = () => {
               )}
 
               {/* Section 3: Library Grid with Header Controls & Add Book Grid Card */}
-              <section className="space-y-5 pt-2">
+              <section className="space-y-3.5">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                    Library ({count})
+                  <h3 className="text-sm sm:text-base font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    Library
                   </h3>
                 </div>
 
@@ -655,7 +676,7 @@ export const App: React.FC = () => {
                       />
                     ))}
 
-                    <AddBookCard onBookImported={handleOpenBook} />
+                    <AddBookCard onBookImported={handleOpenBook} onImportFile={processImportFile} />
                   </div>
                 ) : (
                   <div className="min-h-[220px] p-8 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-secondary)]/50 flex flex-col items-center justify-center text-center text-xs text-[var(--text-muted)] space-y-1.5">
@@ -708,88 +729,77 @@ export const App: React.FC = () => {
                   </div>
                 )}
               </section>
+
+              {/* Section 4: Discover Curated Books Preview on Homepage */}
+              <ShelfDiscoverSection
+                onExploreMore={() => setViewMode('discover')}
+                onOpenBook={handleOpenBook}
+              />
             </div>
           </main>
         ) : (
           /* Reader Mode View */
           <div className="flex-1 flex overflow-hidden relative">
             {searchOpen && (
-              <SearchDrawer
-                onNavigate={(target) => {
-                  const viewEl = document.querySelector('foliate-view') as any;
-                  viewEl?.goTo(target);
-                }}
-                onClose={() => setSearchOpen(false)}
-              />
+              <>
+                <div
+                  className="fixed inset-0 bg-black/25 z-40 backdrop-blur-xs animate-in fade-in duration-150"
+                  onClick={() => setSearchOpen(false)}
+                />
+                <SearchDrawer
+                  onNavigate={(target) => {
+                    const viewEl = document.querySelector('foliate-view') as any;
+                    viewEl?.goTo(target);
+                  }}
+                  onClose={() => setSearchOpen(false)}
+                />
+              </>
             )}
 
             {sidebarOpen && (
               <>
                 <div
-                  className="fixed inset-0 bg-black/40 z-20 lg:hidden backdrop-blur-xs animate-in fade-in duration-150"
+                  className="fixed inset-0 bg-black/25 z-40 backdrop-blur-xs animate-in fade-in duration-150"
                   onClick={() => setSidebarOpen(false)}
                 />
-                <div className="fixed lg:static inset-y-0 left-0 z-30 flex">
-                  <NavigationDrawer
-                    bookId={activeBookId || ''}
-                    currentCfi={currentLocation.cfi}
-                    currentChapterTitle={currentLocation.chapterTitle}
-                    currentSectionHref={currentLocation.sectionHref}
-                    tocList={tocList}
-                    notes={activeNotes}
-                    comments={activeComments}
-                    settings={settings}
-                    onExportNotes={handleExportMarkdown}
-                    onNavigate={async (target) => {
-                      const viewEl = document.querySelector('foliate-view') as any;
-                      if (!viewEl) return;
+                <NavigationDrawer
+                  bookId={activeBookId || ''}
+                  currentCfi={currentLocation.cfi}
+                  currentChapterTitle={currentLocation.chapterTitle}
+                  currentSectionHref={currentLocation.sectionHref}
+                  tocList={tocList}
+                  notes={activeNotes}
+                  comments={activeComments}
+                  settings={settings}
+                  onExportNotes={handleExportMarkdown}
+                  onNavigate={async (target) => {
+                    const viewEl = document.querySelector('foliate-view') as any;
+                    if (!viewEl) return;
 
+                    try {
+                      await viewEl.goTo(target);
+                    } catch (err) {
+                      console.warn('Direct navigation failed, attempting clean fallback:', err);
                       try {
-                        await viewEl.goTo(target);
-                      } catch (err) {
-                        console.warn('Direct navigation failed, attempting clean fallback:', err);
-                        try {
-                          const cleanTarget = typeof target === 'string' ? target.split('#')[0] : target;
-                          await viewEl.goTo(cleanTarget);
-                        } catch (fallbackErr) {
-                          console.error('Chapter navigation failed:', fallbackErr);
-                        }
+                        const cleanTarget = typeof target === 'string' ? target.split('#')[0] : target;
+                        await viewEl.goTo(cleanTarget);
+                      } catch (fallbackErr) {
+                        console.error('Chapter navigation failed:', fallbackErr);
                       }
+                    }
 
-                      if (window.innerWidth < 1024) {
-                        setSidebarOpen(false);
-                      }
-                    }}
-                    onClose={() => setSidebarOpen(false)}
-                    onOpenSettings={() => {
-                      setSettingsTargetSection('gemini');
-                      setSettingsOpen(true);
-                    }}
-                  />
-                </div>
+                    setSidebarOpen(false);
+                  }}
+                  onClose={() => setSidebarOpen(false)}
+                  onOpenSettings={() => {
+                    setSettingsTargetSection('gemini');
+                    setSettingsOpen(true);
+                  }}
+                />
               </>
             )}
 
             <div className="flex-1 flex flex-col items-center justify-center relative bg-[var(--reader-bg)] text-[var(--reader-text)] overflow-hidden">
-              {activeBookId && !sidebarOpen && (
-                <button
-                  onClick={() => {
-                    setSidebarOpen(true);
-                    if (searchOpen) setSearchOpen(false);
-                    if (settingsOpen) setSettingsOpen(false);
-                  }}
-                  className="absolute left-4 top-3.5 z-20 p-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)]/85 hover:bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] shadow-sm backdrop-blur-xl transition-all cursor-pointer group flex items-center justify-center"
-                  title="Contents, Notes & Comments (Sidebar)"
-                >
-                  <List className="w-4 h-4 text-[var(--accent-color)] group-hover:scale-110 transition-transform" />
-                  {activeNotes.length + activeComments.length > 0 && (
-                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[var(--accent-color)] text-white text-[9px] font-bold flex items-center justify-center shadow-sm">
-                      {activeNotes.length + activeComments.length}
-                    </span>
-                  )}
-                </button>
-              )}
-
               {activeBookId ? (
                 <FoliateViewer
                   key={`${activeBookId}_${settings.layoutMode}_${bookVersion}`}
@@ -893,6 +903,12 @@ export const App: React.FC = () => {
       <InstallPwaModal
         isOpen={pwaModalOpen}
         onClose={() => setPwaModalOpen(false)}
+      />
+
+      {/* Book Import Loading & Feedback Overlay */}
+      <BookImportOverlay
+        state={importState}
+        onClose={() => setImportState(null)}
       />
 
       {/* Global Full-Screen Drag & Drop Overlay */}

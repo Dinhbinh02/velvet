@@ -4,15 +4,21 @@ import { BookService } from '@/src/services/bookService';
 
 interface AddBookCardProps {
   onBookImported?: (bookId: string) => void;
+  onImportFile?: (file: File) => void;
 }
 
-export const AddBookCard: React.FC<AddBookCardProps> = ({ onBookImported }) => {
+export const AddBookCard: React.FC<AddBookCardProps> = ({ onBookImported, onImportFile }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = async (file: File) => {
+    if (onImportFile) {
+      onImportFile(file);
+      return;
+    }
+
     if (!file.name.toLowerCase().endsWith('.epub')) {
       setErrorMsg('Please select a valid .epub file format.');
       setTimeout(() => setErrorMsg(null), 4000);

@@ -194,6 +194,146 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
   // Track recent highlight operations for Undo (Cmd+Z / Ctrl+Z)
   const highlightHistoryRef = useRef<Array<{ span?: HTMLElement; range?: Range; noteId: string }>>([]);
 
+  const isPaginatedMode = settings?.layoutMode === 'paginated-1col' || settings?.layoutMode === 'paginated-2col';
+
+  // First-time reading onboarding swipe guide for touch / mobile users
+  const [showSwipeHint, setShowSwipeHint] = useState<boolean>(() => {
+    try {
+      return !localStorage.getItem('velvet:swipe-hint-seen');
+    } catch {
+      return false;
+    }
+  });
+
+  const dismissSwipeHint = useCallback(() => {
+    setShowSwipeHint(false);
+    try {
+      localStorage.setItem('velvet:swipe-hint-seen', 'true');
+    } catch {}
+  }, []);
+
+  // Navigation lock mutex to prevent double turns and jumping
+  const isNavigatingRef = useRef(false);
+
+  // Natural Page Flip with Smooth Micro-Transition, Haptics & Debounce
+  const turnPageWithAnimation = useCallback((direction: 'next' | 'prev') => {
+    if (!viewRef.current || isNavigatingRef.current) return;
+    isNavigatingRef.current = true;
+
+    const container = containerRef.current;
+    const isNext = direction === 'next';
+
+    // 1. Subtle optical ease-out transition (smooth fade-slide)
+    if (container && isPaginatedMode) {
+      container.style.transition = 'opacity 70ms ease-out, transform 70ms ease-out';
+      container.style.opacity = '0.85';
+      container.style.transform = isNext ? 'translateX(-8px)' : 'translateX(8px)';
+
+      setTimeout(() => {
+        if (isNext) {
+          viewRef.current?.next();
+        } else {
+          viewRef.current?.prev();
+        }
+
+        if (navigator.vibrate) {
+          try { navigator.vibrate(10); } catch {}
+        }
+
+        requestAnimationFrame(() => {
+          if (container) {
+            container.style.transition = 'opacity 130ms cubic-bezier(0.16, 1, 0.3, 1), transform 130ms cubic-bezier(0.16, 1, 0.3, 1)';
+            container.style.opacity = '1';
+            container.style.transform = 'translateX(0px)';
+          }
+        });
+      }, 70);
+    } else {
+      if (isNext) {
+        viewRef.current?.next();
+      } else {
+        viewRef.current?.prev();
+      }
+      if (navigator.vibrate) {
+        try { navigator.vibrate(10); } catch {}
+      }
+    }
+
+    setTimeout(() => {
+      isNavigatingRef.current = false;
+    }, 240);
+  }, [isPaginatedMode]);
+
+  // Smooth touch swipe controller for mobile
+  const touchGestureRef = useRef<{
+    isTracking: boolean;
+    startX: number;
+    startY: number;
+    startTime: number;
+  }>({
+    isTracking: false,
+    startX: 0,
+    startY: 0,
+    startTime: 0,
+  });
+
+  const handleTouchStart = useCallback((e: TouchEvent) => {
+    if (showSwipeHint) {
+      dismissSwipeHint();
+    }
+
+    if (!isPaginatedMode || e.touches.length !== 1 || isNavigatingRef.current) return;
+
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('button, a, input, textarea, .velvet-user-comment, [data-interactive="true"]')) return;
+
+    const touch = e.touches[0];
+    touchGestureRef.current = {
+      isTracking: true,
+      startX: touch.clientX,
+      startY: touch.clientY,
+      startTime: Date.now(),
+    };
+  }, [isPaginatedMode, showSwipeHint, dismissSwipeHint]);
+
+  const handleTouchMove = useCallback((e: TouchEvent) => {
+    const gesture = touchGestureRef.current;
+    if (!gesture.isTracking || !isPaginatedMode) return;
+
+    const touch = e.touches[0];
+    const dx = touch.clientX - gesture.startX;
+    const dy = touch.clientY - gesture.startY;
+
+    // Prevent vertical scroll if user is swiping horizontally
+    if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+      if (e.cancelable) e.preventDefault();
+    }
+  }, [isPaginatedMode]);
+
+  const handleTouchEnd = useCallback((e: TouchEvent) => {
+    const gesture = touchGestureRef.current;
+    if (!gesture.isTracking || !isPaginatedMode || isNavigatingRef.current) return;
+    gesture.isTracking = false;
+
+    const touch = e.changedTouches?.[0];
+    if (!touch) return;
+
+    const dx = touch.clientX - gesture.startX;
+    const dy = touch.clientY - gesture.startY;
+    const dt = Math.max(1, Date.now() - gesture.startTime);
+
+    // Trigger page flip on distinct horizontal swipe
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5 && dt < 800) {
+      if (dx < 0) {
+        // Swipe left -> next page
+        turnPageWithAnimation('next');
+      } else {
+        // Swipe right -> previous page
+        turnPageWithAnimation('prev');
+      }
+    }
+  }, [isPaginatedMode, turnPageWithAnimation]);
+
   const undoLastHighlight = useCallback(async () => {
     const lastItem = highlightHistoryRef.current.pop();
     if (!lastItem) return;
@@ -248,6 +388,8 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
       fontSize = DEFAULT_SETTINGS.fontSize,
       lineHeight = DEFAULT_SETTINGS.lineHeight,
       textAlign = DEFAULT_SETTINGS.textAlign,
+      paragraphSpacing = DEFAULT_SETTINGS.paragraphSpacing,
+      maxWidth = DEFAULT_SETTINGS.maxWidth,
     } = settings || {};
 
     // Generate @font-face rules for all imported custom fonts with accurate weights and styles
@@ -286,7 +428,7 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
         color: inherit !important;
         background-color: transparent !important;
         box-sizing: border-box !important;
-        max-width: 720px !important;
+        max-width: ${maxWidth}px !important;
         margin: 0 auto !important;
         padding: 0 !important;
         letter-spacing: 0.01em;
@@ -310,7 +452,7 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
       }
       p {
         margin-top: 0 !important;
-        margin-bottom: 1.2rem !important;
+        margin-bottom: ${paragraphSpacing}rem !important;
         text-indent: 1.5em;
       }
       span, a, em, strong {
@@ -571,14 +713,18 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
     const isContinuous = settings?.layoutMode === 'continuous';
     renderer.setAttribute('flow', isContinuous ? 'scrolled' : 'paginated');
 
-    // 3. Margin & Gap
-    renderer.setAttribute('margin', isContinuous ? '24px 0px' : '44px');
-    renderer.setAttribute('gap', '6%');
+    // 3. Margin & Gap responsive for mobile and desktop
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
+    renderer.setAttribute('margin', isContinuous ? (isMobile ? '16px 8px' : '24px 0px') : (isMobile ? '20px 16px' : '44px 32px'));
+    renderer.setAttribute('gap', isMobile ? '4%' : '6%');
 
     // 4. Set column count (1 col vs 2 col)
     if (!isContinuous) {
       const isOneCol = settings?.layoutMode === 'paginated-1col';
       renderer.setAttribute('max-column-count', isOneCol ? '1' : '2');
+      renderer.removeAttribute('animated');
+    } else {
+      renderer.removeAttribute('animated');
     }
 
     // 5. Max Inline Size (setting this triggers Paginator render)
@@ -1127,6 +1273,12 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
         doc.addEventListener('contextmenu', (e: Event) => {
           e.preventDefault();
         });
+
+        // Touch Gesture Listeners for Interactive Physics Page Turn
+        doc.addEventListener('touchstart', handleTouchStart, { passive: true });
+        doc.addEventListener('touchmove', handleTouchMove, { passive: false });
+        doc.addEventListener('touchend', handleTouchEnd, { passive: true });
+        doc.addEventListener('touchcancel', handleTouchEnd, { passive: true });
 
         // Dismiss comment modal if user clicks inside the book document
         doc.addEventListener('mousedown', () => {
@@ -1835,7 +1987,7 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
       ) {
         e.preventDefault();
         e.stopPropagation();
-        viewRef.current.next();
+        turnPageWithAnimation('next');
         return true;
       }
 
@@ -1845,13 +1997,13 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
       ) {
         e.preventDefault();
         e.stopPropagation();
-        viewRef.current.prev();
+        turnPageWithAnimation('prev');
         return true;
       }
     }
 
     return false;
-  }, [getAnySelectedText, undoLastHighlight, triggerHighlight, settings?.highlightShortcut, settings?.prevPageShortcut, settings?.nextPageShortcut, checkKeyMatch]);
+  }, [getAnySelectedText, undoLastHighlight, triggerHighlight, settings?.highlightShortcut, settings?.prevPageShortcut, settings?.nextPageShortcut, checkKeyMatch, turnPageWithAnimation]);
 
   // Window-level keydown listener
   useEffect(() => {
@@ -1897,8 +2049,6 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
     return () => window.removeEventListener('velvet:summaries-updated', handleSummariesUpdated);
   }, [bookId]);
 
-  const isPaginatedMode = settings?.layoutMode === 'paginated-1col' || settings?.layoutMode === 'paginated-2col';
-
   return (
     <div className="w-full h-full relative overflow-hidden flex flex-col items-center justify-center">
       {isLoading && (
@@ -1920,18 +2070,18 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
         className="w-full h-full cursor-default select-text"
       />
 
-      {/* 2 Bottom Navigation Bars (Previous / Next Page) in Paginated 1/2 Column Modes */}
+      {/* 2 Bottom Navigation Bars (Previous / Next Page) in Paginated 1/2 Column Modes (Desktop/Mouse only) */}
       {isPaginatedMode && (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 max-w-md w-full px-4 pointer-events-none select-none">
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 hidden md:flex items-center gap-2 max-w-md w-full px-4 pointer-events-none select-none">
           {/* Previous Page Bar Button */}
           <button
             type="button"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              viewRef.current?.prev();
+              turnPageWithAnimation('prev');
             }}
-            className="flex-1 py-2 px-3 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] text-xs font-semibold transition-all pointer-events-auto cursor-pointer flex items-center justify-center gap-1.5"
+            className="flex-1 py-2 px-3 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] text-xs font-semibold transition-all pointer-events-auto cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
             title={`Previous Page (${settings?.prevPageShortcut || '←'})`}
           >
             <ChevronLeft className="w-4 h-4" />
@@ -1944,14 +2094,55 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              viewRef.current?.next();
+              turnPageWithAnimation('next');
             }}
-            className="flex-1 py-2 px-3 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] text-xs font-semibold transition-all pointer-events-auto cursor-pointer flex items-center justify-center gap-1.5"
+            className="flex-1 py-2 px-3 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] text-xs font-semibold transition-all pointer-events-auto cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
             title={`Next Page (${settings?.nextPageShortcut || '→'})`}
           >
             <span>Next</span>
             <ChevronRight className="w-4 h-4" />
           </button>
+        </div>
+      )}
+
+      {/* First-Time Swipe Gesture Onboarding Hint (Mobile / Touch Devices) */}
+      {isPaginatedMode && showSwipeHint && (
+        <div
+          onClick={dismissSwipeHint}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-200 select-none cursor-pointer"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-xs sm:max-w-sm rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-color)] shadow-2xl p-6 flex flex-col items-center text-center space-y-4 animate-in zoom-in-95 duration-200"
+          >
+            {/* Animated Swipe Icon Indicator */}
+            <div className="relative w-20 h-20 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-color)] flex items-center justify-center overflow-hidden">
+              <div className="flex items-center gap-3 text-[var(--accent-color)]">
+                <ChevronLeft className="w-5 h-5 -translate-x-1 animate-pulse" />
+                <div className="w-8 h-8 rounded-full border-2 border-[var(--accent-color)] flex items-center justify-center bg-[var(--bg-surface)] shadow-xs">
+                  <div className="w-2.5 h-2.5 rounded-full bg-[var(--accent-color)]" />
+                </div>
+                <ChevronRight className="w-5 h-5 translate-x-1 animate-pulse" />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <h4 className="text-base font-bold text-[var(--text-primary)]">
+                Turn Pages with Swipe
+              </h4>
+              <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                Swipe left to read next, or swipe right to go back to the previous page.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={dismissSwipeHint}
+              className="w-full py-2.5 px-4 rounded-xl bg-[var(--accent-color)] hover:bg-[var(--accent-hover)] text-white text-xs font-semibold shadow-sm transition-all cursor-pointer active:scale-98"
+            >
+              Got It
+            </button>
+          </div>
         </div>
       )}
 

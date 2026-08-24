@@ -394,6 +394,38 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   const [newNoteContent, setNewNoteContent] = useState('');
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const drawerRef = useRef<HTMLElement>(null);
+
+  // Close when clicking outside of the drawer
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
+      if (drawerRef.current && !drawerRef.current.contains(e.target as Node)) {
+        const target = e.target as HTMLElement | null;
+        if (target && target.closest('[data-sidebar-toggle]')) return;
+        onClose();
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('touchstart', handleOutsideClick);
+
+    // Also attach to reader iframe if active
+    const iframe = document.querySelector('foliate-view')?.shadowRoot?.querySelector('iframe');
+    const iframeDoc = iframe?.contentDocument;
+    if (iframeDoc) {
+      iframeDoc.addEventListener('mousedown', handleOutsideClick);
+      iframeDoc.addEventListener('touchstart', handleOutsideClick);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('touchstart', handleOutsideClick);
+      if (iframeDoc) {
+        iframeDoc.removeEventListener('mousedown', handleOutsideClick);
+        iframeDoc.removeEventListener('touchstart', handleOutsideClick);
+      }
+    };
+  }, [onClose]);
 
   // Helper to insert formatting markdown
   const insertFormatting = (
@@ -535,7 +567,10 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   };
 
   return (
-    <aside className="w-[80vw] max-w-[320px] sm:w-80 md:w-84 h-full shrink-0 bg-[var(--bg-surface)] border-r border-[var(--border-color)] flex flex-col select-none z-30 shadow-2xl md:shadow-none animate-in slide-in-from-left duration-200">
+    <aside
+      ref={drawerRef}
+      className="fixed left-0 top-0 bottom-0 w-84 bg-[var(--bg-surface)]/95 backdrop-blur-2xl border-r border-[var(--border-color)] shadow-2xl z-50 flex flex-col animate-in slide-in-from-left duration-200 select-none"
+    >
       {/* Unified Compact Sidebar Header (Matching h-14 Height with Main Topbar) */}
       <div className="header-safe px-2.5 sm:px-3 flex items-center justify-between gap-1 border-b border-[var(--border-color)] bg-[var(--bg-surface)] shrink-0">
         {/* Segmented 3-in-1 Tabs Switcher */}
