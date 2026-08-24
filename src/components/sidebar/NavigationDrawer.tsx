@@ -194,14 +194,7 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
         throw new Error('No summaries generated.');
       }
 
-      // 1. Inject or overwrite directly into the EPUB zip binary in OPFS
-      const injected = await EPUBSummaryInjectorService.injectSummariesIntoEPUB(
-        bookId || '',
-        targetHref || '',
-        summaries
-      );
-
-      // 2. Also save to Dexie database for fast retrieval & synchronization
+      // 1. Save to Dexie database for fast retrieval & synchronization
       const summaryRecordId = `${bookId || 'unknown'}_${targetHref || chapterLabel}`;
       await db.chapterSummaries.put({
         id: summaryRecordId,
@@ -213,15 +206,22 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
         updatedAt: Date.now(),
       });
 
-      // 3. Dispatch global reload event to cleanly remount Foliate with the updated EPUB file
-      if (injected) {
-        // Trigger metadata auto-sync to sync db.chapterSummaries with Supabase
-        if (bookId) {
-          SupabaseSyncService.triggerAutoSync(3000);
+      // 2. Inject immediately into the active reader document without full reload or OPFS locking
+      try {
+        const activeIframe = viewEl?.renderer?.shadowRoot?.querySelector('iframe') || viewEl?.shadowRoot?.querySelector('iframe') || document.querySelector('foliate-view')?.shadowRoot?.querySelector('iframe');
+        const activeDoc = activeIframe?.contentDocument;
+        if (activeDoc) {
+          EPUBSummaryInjectorService.injectSummariesIntoDOM(activeDoc, summaries);
         }
-
-        window.dispatchEvent(new CustomEvent('velvet:reload-book', { detail: { bookId } }));
+      } catch (domErr) {
+        console.warn('Direct DOM injection warning:', domErr);
       }
+
+      // 3. Trigger cloud sync and broadcast live update
+      if (bookId) {
+        SupabaseSyncService.triggerAutoSync(3000);
+      }
+      window.dispatchEvent(new CustomEvent('velvet:summaries-updated', { detail: { bookId, href: targetHref } }));
 
       setHasGenerated(true);
       setTimeout(() => setHasGenerated(false), 3000);

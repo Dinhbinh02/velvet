@@ -943,6 +943,24 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
       };
       restoreComments();
 
+      // Restore AI Chapter Summaries / Key Insights from Dexie for this book
+      const restoreChapterSummaries = async () => {
+        try {
+          const summariesList = await db.chapterSummaries.where('bookId').equals(bookId).toArray();
+          if (summariesList.length === 0) return;
+
+          const { EPUBSummaryInjectorService } = await import('@/src/services/epubSummaryInjectorService');
+          for (const s of summariesList) {
+            if (Array.isArray(s.summaries) && s.summaries.length > 0) {
+              EPUBSummaryInjectorService.injectSummariesIntoDOM(doc, s.summaries);
+            }
+          }
+        } catch (e) {
+          console.warn('Could not restore chapter summaries:', e);
+        }
+      };
+      restoreChapterSummaries();
+
       // Extract readable sentences for TTS playback and attach click listener
       try {
         TTSService.extractSentencesFromDoc(doc);
@@ -1880,6 +1898,27 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [handleShortcutTrigger]);
+
+  // Dynamic live updater for AI Chapter Summaries / Key Insights
+  useEffect(() => {
+    const handleSummariesUpdated = async () => {
+      const activeDoc = currentDocRef.current;
+      if (activeDoc && bookId) {
+        try {
+          const summariesList = await db.chapterSummaries.where('bookId').equals(bookId).toArray();
+          const { EPUBSummaryInjectorService } = await import('@/src/services/epubSummaryInjectorService');
+          for (const s of summariesList) {
+            if (Array.isArray(s.summaries) && s.summaries.length > 0) {
+              EPUBSummaryInjectorService.injectSummariesIntoDOM(activeDoc, s.summaries);
+            }
+          }
+        } catch {}
+      }
+    };
+
+    window.addEventListener('velvet:summaries-updated', handleSummariesUpdated);
+    return () => window.removeEventListener('velvet:summaries-updated', handleSummariesUpdated);
+  }, [bookId]);
 
   const isPaginatedMode = settings?.layoutMode === 'paginated-1col' || settings?.layoutMode === 'paginated-2col';
 

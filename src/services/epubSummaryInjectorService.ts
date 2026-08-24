@@ -2,12 +2,130 @@ import JSZip from 'jszip';
 import { OPFSStorageService } from './opfsStorage';
 import type { IHeaderSummary } from '@/src/types/book';
 
+/**
+ * Normalizes heading text for robust matching across EPUB markup variations
+ * Removes "Chapter X:", leading Roman/Arabic numbers, and extra punctuation/spaces
+ */
+function normalizeHeadingText(str: string): string {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .replace(/^(chapter|ch\.|part|phần|chương)\s*(\d+|[ivxlcdm]+)[:.\s-]*/i, '')
+    .replace(/^(\d+|[ivxlcdm]+)[\s.:-]+/i, '')
+    .replace(/[\n\r\t]+/g, ' ')
+    .replace(/[^\p{L}\p{N}\s]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export class EPUBSummaryInjectorService {
   /**
-   * Inject or overwrite AI chapter header summaries directly into the EPUB's XHTML/HTML section file
-   * @param bookId Book identifier
-   * @param targetHref Chapter href inside EPUB (e.g., 'text/chapter1.xhtml' or 'ch01.xhtml#title')
+   * Inject or overwrite AI chapter header summaries directly into a live DOM document
+   * @param workingDoc DOM Document (from Foliate iframe or DOMParser)
    * @param summaries Array of header-summary objects
+   * @returns number of summaries successfully inserted
+   */
+  static injectSummariesIntoDOM(
+    workingDoc: Document,
+    summaries: IHeaderSummary[]
+  ): number {
+    if (!workingDoc || !workingDoc.body || !summaries || summaries.length === 0) return 0;
+
+    // 1. Remove any existing summary cards first to prevent duplicates
+    workingDoc.querySelectorAll('.velvet-chapter-summary-card, [class*="chapter-summary-card"]').forEach((el) => el.remove());
+
+    // 2. Find all headings and title candidate elements in workingDoc
+    const allHeadings = Array.from(
+      workingDoc.querySelectorAll(
+        'h1, h2, h3, h4, h5, h6, [class*="heading"], [class*="title"], [class*="chapter-title"], [class*="subchapter"], [class*="header"]'
+      )
+    ).filter((el) => {
+      if (el.closest('figure, figcaption, [class*="caption"], [class*="footnote"]')) return false;
+      const txt = (el.textContent || '').trim();
+      return txt.length > 0 && txt.length < 200;
+    }) as HTMLElement[];
+
+    const candidateHeaders = (
+      Array.from(
+        workingDoc.querySelectorAll('p > strong:only-child, p > b:only-child, p.center, div.title, .section-title')
+      ) as HTMLElement[]
+    ).filter((el) => !el.closest('figure, figcaption, [class*="caption"], [class*="footnote"]'));
+
+    const searchPool = [...allHeadings, ...candidateHeaders];
+
+    let insertedCount = 0;
+
+    summaries.forEach((s, idx) => {
+      if (!s.header || !s.summary) return;
+
+      const rawHeader = s.header.trim();
+      const cleanHeader = rawHeader.toLowerCase();
+      const normHeader = normalizeHeadingText(rawHeader);
+
+      if (cleanHeader.length < 2) return;
+
+      // Match Strategy 1: Exact or substring match on raw text
+      let targetEl = searchPool.find((h) => {
+        const hText = (h.textContent || '').trim().toLowerCase();
+        return (
+          hText === cleanHeader ||
+          (hText.length < 150 && (hText.startsWith(cleanHeader) || cleanHeader.startsWith(hText)))
+        );
+      });
+
+      // Match Strategy 2: Normalized heading match (handles "6 Building Pyramids" vs "Building Pyramids")
+      if (!targetEl && normHeader.length >= 3) {
+        targetEl = searchPool.find((h) => {
+          const hNorm = normalizeHeadingText(h.textContent || '');
+          return (
+            hNorm === normHeader ||
+            (hNorm.length >= 3 && (hNorm.includes(normHeader) || normHeader.includes(hNorm)))
+          );
+        });
+      }
+
+      // Match Strategy 3: Chapter title fallback for the first section summary
+      if (!targetEl && idx === 0 && allHeadings.length > 0) {
+        // First summary belongs to the chapter header
+        targetEl = allHeadings[0];
+      }
+
+      if (targetEl && targetEl.parentNode) {
+        // Create velvet luxury summary card
+        const card = workingDoc.createElement('div');
+        card.className = 'velvet-chapter-summary-card';
+        card.setAttribute(
+          'style',
+          'margin: 18px 0 24px 0; padding: 16px 18px; border-radius: 12px; border-left: 3px solid currentColor; border-top: 1px solid currentColor; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; border-color: color-mix(in srgb, currentColor 18%, transparent); background-color: color-mix(in srgb, currentColor 4%, transparent); font-family: inherit; font-size: 0.95em; line-height: 1.6; color: inherit; box-sizing: border-box;'
+        );
+
+        const keyPointsHtml =
+          Array.isArray(s.keyPoints) && s.keyPoints.length > 0
+            ? `<ul style="margin: 12px 0 0 0; padding-left: 20px; list-style-type: disc; opacity: 0.92; line-height: 1.55;">
+                ${s.keyPoints.map((kp: string) => `<li style="margin-bottom: 6px;">${kp}</li>`).join('')}
+              </ul>`
+            : '';
+
+        card.innerHTML = `
+          <div style="font-weight: 700; font-size: 0.85em; letter-spacing: 0.05em; text-transform: uppercase; opacity: 0.75; margin-bottom: 8px;">
+            Key Insights
+          </div>
+          <div style="opacity: 0.95; font-size: 1em; line-height: 1.6;">
+            ${s.summary}
+          </div>
+          ${keyPointsHtml}
+        `;
+
+        targetEl.parentNode.insertBefore(card, targetEl.nextSibling);
+        insertedCount++;
+      }
+    });
+
+    return insertedCount;
+  }
+
+  /**
+   * Inject AI summaries directly into the EPUB zip binary in OPFS (Optional / Persistence)
    */
   static async injectSummariesIntoEPUB(
     bookId: string,
@@ -28,7 +146,6 @@ export class EPUBSummaryInjectorService {
       const cleanHref = targetHref.split('#')[0].replace(/^\.\//, '');
       let matchedPath: string | null = null;
 
-      // Look for exact match or path ending with cleanHref
       for (const relativePath of Object.keys(zip.files)) {
         if (
           relativePath === cleanHref ||
@@ -50,106 +167,23 @@ export class EPUBSummaryInjectorService {
       if (!fileEntry) return false;
       const htmlContent = await fileEntry.async('string');
 
-      // 5. Parse DOM using DOMParser
+      // 5. Parse DOM
       const parser = new DOMParser();
-      const doc = parser.parseFromString(htmlContent, 'application/xhtml+xml');
-
-      // Check for parsing errors
-      const parserError = doc.querySelector('parsererror');
-      let workingDoc = doc;
-      if (parserError) {
-        // Fallback to text/html parsing if xhtml fails
+      let workingDoc = parser.parseFromString(htmlContent, 'application/xhtml+xml');
+      if (workingDoc.querySelector('parsererror')) {
         workingDoc = parser.parseFromString(htmlContent, 'text/html');
       }
 
-      // 6. Remove any existing summary cards first (Handles Regenerate seamlessly!)
-      workingDoc.querySelectorAll('.velvet-chapter-summary-card, [class*="chapter-summary-card"]').forEach((el) => el.remove());
+      // 6. Inject using smart DOM injector
+      const insertedCount = this.injectSummariesIntoDOM(workingDoc, summaries);
+      if (insertedCount === 0) return false;
 
-      // 7. Find all headings in workingDoc
-      const allHeadings = Array.from(
-        workingDoc.querySelectorAll(
-          'h1, h2, h3, h4, h5, h6, [class*="heading"], [class*="title"], [class*="chapter-title"], [class*="subchapter"]'
-        )
-      ).filter((el) => {
-        if (el.closest('figure, figcaption, [class*="caption"], [class*="footnote"]')) return false;
-        const txt = (el.textContent || '').trim();
-        return txt.length > 0 && txt.length < 150;
-      }) as HTMLElement[];
-
-      let insertedCount = 0;
-
-      summaries.forEach((s) => {
-        if (!s.header || !s.summary) return;
-
-        const cleanHeader = s.header.trim().toLowerCase();
-        if (cleanHeader.length < 3) return;
-
-        // Find exact or high-confidence matching heading
-        let targetEl = allHeadings.find((h) => {
-          const hText = (h.textContent || '').trim().toLowerCase();
-          return (
-            hText === cleanHeader ||
-            (hText.length < 100 && (hText.startsWith(cleanHeader) || cleanHeader.startsWith(hText)))
-          );
-        });
-
-        // Fallback search
-        if (!targetEl) {
-          const candidateHeaders = (
-            Array.from(
-              workingDoc.querySelectorAll('p > strong:only-child, p > b:only-child, p.center, div.title, .section-title')
-            ) as HTMLElement[]
-          ).filter((el) => !el.closest('figure, figcaption, [class*="caption"], [class*="footnote"]'));
-
-          targetEl = candidateHeaders.find((el) => {
-            const text = (el.textContent || '').trim().toLowerCase();
-            return text === cleanHeader;
-          });
-        }
-
-        if (targetEl && targetEl.parentNode) {
-          const card = workingDoc.createElement('div');
-          card.className = 'velvet-chapter-summary-card';
-          card.setAttribute(
-            'style',
-            'margin: 18px 0 24px 0; padding: 16px 18px; border-radius: 8px; border-left: 3px solid currentColor; border-top: 1px solid currentColor; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; border-color: color-mix(in srgb, currentColor 18%, transparent); background-color: color-mix(in srgb, currentColor 4%, transparent); font-family: inherit; font-size: 0.95em; line-height: 1.6; color: inherit; box-sizing: border-box;'
-          );
-
-          const keyPointsHtml =
-            Array.isArray(s.keyPoints) && s.keyPoints.length > 0
-              ? `<ul style="margin: 12px 0 0 0; padding-left: 20px; list-style-type: disc; opacity: 0.92; line-height: 1.55;">
-                  ${s.keyPoints.map((kp: string) => `<li style="margin-bottom: 6px;">${kp}</li>`).join('')}
-                </ul>`
-              : '';
-
-          card.innerHTML = `
-            <div style="font-weight: 700; font-size: 0.9em; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.75; margin-bottom: 8px;">
-              Key Insights
-            </div>
-            <div style="opacity: 0.95; font-size: 1em; line-height: 1.6;">
-              ${s.summary}
-            </div>
-            ${keyPointsHtml}
-          `;
-
-          targetEl.parentNode.insertBefore(card, targetEl.nextSibling);
-          insertedCount++;
-        }
-      });
-
-      if (insertedCount === 0) {
-        console.warn('No matching headings found in chapter file to insert summaries.');
-        return false;
-      }
-
-      // 8. Serialize doc back to XML/HTML string
+      // 7. Serialize back
       const serializer = new XMLSerializer();
       const newContent = serializer.serializeToString(workingDoc);
-
-      // 9. Update file in zip
       zip.file(matchedPath, newContent);
 
-      // 10. Re-pack EPUB binary Blob with STORE compression for mimetype (EPUB spec) and DEFLATE for content
+      // 8. Re-pack EPUB binary Blob
       const modifiedBlob = await zip.generateAsync({
         type: 'blob',
         mimeType: 'application/epub+zip',
@@ -157,7 +191,7 @@ export class EPUBSummaryInjectorService {
         compressionOptions: { level: 6 },
       });
 
-      // 11. Save back to OPFS storage
+      // 9. Save back to OPFS storage
       await OPFSStorageService.saveBook(bookId, modifiedBlob);
 
       return true;
