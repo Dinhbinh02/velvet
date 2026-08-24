@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { X, Type, Columns, RotateCcw, AlignLeft, AlignJustify, Palette, Upload, Trash2, Keyboard, Bot, Highlighter, ExternalLink, Info } from 'lucide-react';
+import { Type, Columns, RotateCcw, AlignLeft, AlignJustify, Palette, Upload, Trash2, Keyboard, Bot, Highlighter, ExternalLink, Info } from 'lucide-react';
 import type { IReaderSettings, ICustomFont, ITTSSettings } from '@/src/types/book';
 import { DEFAULT_SETTINGS } from '@/src/hooks/useReaderSettings';
 import { FontService } from '@/src/services/fontService';
@@ -19,10 +19,42 @@ export const TypographyDrawer: React.FC<TypographyDrawerProps> = ({
   onUpdate,
   onClose,
 }) => {
+  const drawerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Close when clicking outside of the drawer
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
+      if (drawerRef.current && !drawerRef.current.contains(e.target as Node)) {
+        const target = e.target as HTMLElement | null;
+        if (target && target.closest('[data-settings-toggle]')) return;
+        onClose();
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('touchstart', handleOutsideClick);
+
+    // Also attach to reader iframe if active
+    const iframe = document.querySelector('foliate-view')?.shadowRoot?.querySelector('iframe');
+    const iframeDoc = iframe?.contentDocument;
+    if (iframeDoc) {
+      iframeDoc.addEventListener('mousedown', handleOutsideClick);
+      iframeDoc.addEventListener('touchstart', handleOutsideClick);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('touchstart', handleOutsideClick);
+      if (iframeDoc) {
+        iframeDoc.removeEventListener('mousedown', handleOutsideClick);
+        iframeDoc.removeEventListener('touchstart', handleOutsideClick);
+      }
+    };
+  }, [onClose]);
 
   // Auto-scroll to targetSection ONLY when explicitly requested (e.g. clicking AI bot without key)
   useEffect(() => {
@@ -177,9 +209,9 @@ export const TypographyDrawer: React.FC<TypographyDrawerProps> = ({
   ];
 
   return (
-    <div className="fixed right-0 top-0 bottom-0 w-84 bg-[var(--bg-surface)]/95 backdrop-blur-2xl border-l border-[var(--border-color)] shadow-2xl z-50 flex flex-col animate-in slide-in-from-right duration-200 select-none">
+    <div ref={drawerRef} className="fixed right-0 top-0 bottom-0 w-84 bg-[var(--bg-surface)]/95 backdrop-blur-2xl border-l border-[var(--border-color)] shadow-2xl z-50 flex flex-col animate-in slide-in-from-right duration-200 select-none">
       {/* Header */}
-      <div className="h-14 px-5 flex items-center justify-between border-b border-[var(--border-color)] shrink-0">
+      <div className="h-14 px-5 flex items-center border-b border-[var(--border-color)] shrink-0">
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-lg bg-[var(--accent-subtle)] text-[var(--accent-color)] flex items-center justify-center">
             <Type className="w-4 h-4" />
@@ -189,13 +221,6 @@ export const TypographyDrawer: React.FC<TypographyDrawerProps> = ({
             <p className="text-[11px] text-[var(--text-secondary)]">Themes, typography & layout</p>
           </div>
         </div>
-        <button
-          onClick={onClose}
-          className="p-1.5 rounded-lg hover:bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all cursor-pointer"
-          title="Close Settings"
-        >
-          <X className="w-4 h-4" />
-        </button>
       </div>
 
       {/* Settings Body */}

@@ -519,6 +519,7 @@ export const App: React.FC = () => {
 
               {/* Reading Settings (Themes, Typography, Layout) */}
               <button
+                data-settings-toggle="true"
                 onClick={() => {
                   setSettingsOpen(!settingsOpen);
                   if (searchOpen) setSearchOpen(false);
@@ -876,15 +877,24 @@ export const App: React.FC = () => {
             </div>
 
             {settingsOpen && (
-              <TypographyDrawer
-                settings={settings}
-                targetSection={settingsTargetSection}
-                onUpdate={updateSettings}
-                onClose={() => {
-                  setSettingsOpen(false);
-                  setSettingsTargetSection(null);
-                }}
-              />
+              <>
+                <div
+                  className="fixed inset-0 bg-black/25 z-40 backdrop-blur-xs animate-in fade-in duration-150"
+                  onClick={() => {
+                    setSettingsOpen(false);
+                    setSettingsTargetSection(null);
+                  }}
+                />
+                <TypographyDrawer
+                  settings={settings}
+                  targetSection={settingsTargetSection}
+                  onUpdate={updateSettings}
+                  onClose={() => {
+                    setSettingsOpen(false);
+                    setSettingsTargetSection(null);
+                  }}
+                />
+              </>
             )}
           </div>
         )}
