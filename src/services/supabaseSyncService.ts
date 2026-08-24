@@ -347,6 +347,10 @@ export class SupabaseSyncService {
 
       if (cloudFonts?.length) {
         for (const f of cloudFonts) {
+          if (tombstoneIds.has(f.id)) {
+            supabase.from('custom_fonts').delete().eq('id', f.id).then(() => {});
+            continue;
+          }
           const exists = await db.customFonts.get(f.id);
           if (!exists) {
             await db.customFonts.put({

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BookOpen, ArrowRight } from 'lucide-react';
+import { BookOpen, ArrowRight, Cloud, Loader2 } from 'lucide-react';
 import type { IBook } from '@/src/types/book';
 import { useBookProgress } from '@/src/hooks/useBooks';
 
@@ -11,6 +11,50 @@ interface ReadingNowCardProps {
 export const ReadingNowCard: React.FC<ReadingNowCardProps> = ({ book, onOpen }) => {
   const progress = useBookProgress(book.id);
   const percentage = progress ? Math.round(progress.percentage * 100) : 0;
+  const [isDownloaded, setIsDownloaded] = useState(true);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  // Check if book file exists in local OPFS
+  useEffect(() => {
+    let active = true;
+    const checkFile = async () => {
+      try {
+        const { OPFSStorageService } = await import('@/src/services/opfsStorage');
+        await OPFSStorageService.getBookFile(book.id);
+        if (active) setIsDownloaded(true);
+      } catch {
+        if (active) setIsDownloaded(false);
+      }
+    };
+    checkFile();
+    return () => {
+      active = false;
+    };
+  }, [book.id]);
+
+  const handleOpenClick = async () => {
+    if (isDownloading) return;
+
+    if (!isDownloaded) {
+      setIsDownloading(true);
+      try {
+        const { BookService } = await import('@/src/services/bookService');
+        const file = await BookService.getBookFile(book.id);
+        if (file) {
+          setIsDownloaded(true);
+          onOpen(book.id);
+        }
+      } catch (err) {
+        console.warn('Could not download book:', err);
+        alert('Downloading book from Cloud Storage... Please check your internet connection.');
+      } finally {
+        setIsDownloading(false);
+      }
+      return;
+    }
+
+    onOpen(book.id);
+  };
 
   const [extractedCoverUrl, setExtractedCoverUrl] = useState<string | null>(null);
 
@@ -71,7 +115,7 @@ export const ReadingNowCard: React.FC<ReadingNowCardProps> = ({ book, onOpen }) 
     <div className="h-full p-3.5 sm:p-6 rounded-2xl sm:rounded-3xl bg-[var(--bg-secondary)] border border-[var(--border-color)] flex flex-row items-center gap-3.5 sm:gap-6 shadow-sm hover:border-[var(--border-hover)] transition-all">
       {/* Book 3D Cover */}
       <div
-        onClick={() => onOpen(book.id)}
+        onClick={handleOpenClick}
         className="w-20 sm:w-36 aspect-[2/3] rounded-lg overflow-hidden shrink-0 shadow-md cursor-pointer relative bg-[var(--bg-surface)] border border-[var(--border-color)] hover:scale-105 transition-transform"
       >
         {coverUrl ? (
@@ -81,6 +125,23 @@ export const ReadingNowCard: React.FC<ReadingNowCardProps> = ({ book, onOpen }) 
             <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-zinc-400">EPUB</span>
             <p className="text-[11px] sm:text-xs font-bold line-clamp-3 leading-snug">{book.title}</p>
             <p className="text-[9px] sm:text-[10px] text-zinc-400 truncate">{book.author}</p>
+          </div>
+        )}
+
+        {/* Cloud Sync Status Badge */}
+        {!isDownloaded && (
+          <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-black/75 backdrop-blur-md text-[9px] font-semibold text-amber-300 flex items-center gap-1 shadow-xs border border-amber-400/20">
+            {isDownloading ? (
+              <>
+                <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                <span>Syncing...</span>
+              </>
+            ) : (
+              <>
+                <Cloud className="w-2.5 h-2.5" />
+                <span>Cloud</span>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -119,11 +180,21 @@ export const ReadingNowCard: React.FC<ReadingNowCardProps> = ({ book, onOpen }) 
         {/* Continue Button */}
         <div className="pt-0.5">
           <button
-            onClick={() => onOpen(book.id)}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-[var(--accent-color)] text-[var(--bg-primary)] text-xs font-bold hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+            onClick={handleOpenClick}
+            disabled={isDownloading}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-[var(--accent-color)] text-[var(--bg-primary)] text-xs font-bold hover:opacity-90 transition-opacity cursor-pointer shadow-xs disabled:opacity-60"
           >
-            <span>Continue Reading</span>
-            <ArrowRight className="w-3.5 h-3.5" />
+            {isDownloading ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Downloading Book...</span>
+              </>
+            ) : (
+              <>
+                <span>{!isDownloaded ? 'Download & Read' : 'Continue Reading'}</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </>
+            )}
           </button>
         </div>
       </div>

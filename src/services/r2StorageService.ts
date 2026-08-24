@@ -135,9 +135,12 @@ export class R2StorageService {
               const { data: pubData } = supabase.storage.from('books').getPublicUrl(key);
               if (pubData?.publicUrl) {
                 const res = await fetch(pubData.publicUrl);
-                if (res.ok && res.status === 200 && (res.headers.get('content-type')?.includes('epub') || res.headers.get('content-type')?.includes('zip') || res.headers.get('content-type')?.includes('octet-stream'))) {
-                  fileBlob = await res.blob();
-                  break;
+                if (res.ok && res.status === 200) {
+                  const b = await res.blob();
+                  if (b && b.size > 500) {
+                    fileBlob = b;
+                    break;
+                  }
                 }
               }
             } catch {}

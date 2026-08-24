@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MoreVertical, Trash2, BookOpen, CheckCircle, Clock } from 'lucide-react';
+import { MoreVertical, Trash2, BookOpen, CheckCircle, Clock, Cloud, Loader2 } from 'lucide-react';
 import type { IBook } from '@/src/types/book';
 import { useBookProgress } from '@/src/hooks/useBooks';
 
@@ -12,9 +12,29 @@ interface BookCardProps {
 export const BookCard: React.FC<BookCardProps> = ({ book, onOpen, onDelete }) => {
   const [showMenu, setShowMenu] = useState(false);
   const [openUpward, setOpenUpward] = useState(false);
+  const [isDownloaded, setIsDownloaded] = useState(true);
+  const [isDownloading, setIsDownloading] = useState(false);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const progress = useBookProgress(book.id);
   const percentage = progress ? Math.round(progress.percentage * 100) : 0;
+
+  // Check if book EPUB file is already stored in local browser OPFS
+  useEffect(() => {
+    let active = true;
+    const checkFile = async () => {
+      try {
+        const { OPFSStorageService } = await import('@/src/services/opfsStorage');
+        await OPFSStorageService.getBookFile(book.id);
+        if (active) setIsDownloaded(true);
+      } catch {
+        if (active) setIsDownloaded(false);
+      }
+    };
+    checkFile();
+    return () => {
+      active = false;
+    };
+  }, [book.id]);
 
   const handleToggleMenu = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -25,6 +45,30 @@ export const BookCard: React.FC<BookCardProps> = ({ book, onOpen, onDelete }) =>
       setOpenUpward(spaceBelow < 110);
     }
     setShowMenu(!showMenu);
+  };
+
+  const handleOpenClick = async () => {
+    if (isDownloading) return;
+
+    if (!isDownloaded) {
+      setIsDownloading(true);
+      try {
+        const { BookService } = await import('@/src/services/bookService');
+        const file = await BookService.getBookFile(book.id);
+        if (file) {
+          setIsDownloaded(true);
+          onOpen(book.id);
+        }
+      } catch (err) {
+        console.warn('Could not download book:', err);
+        alert('Downloading book from Cloud Storage... Please check your internet connection.');
+      } finally {
+        setIsDownloading(false);
+      }
+      return;
+    }
+
+    onOpen(book.id);
   };
 
   const [extractedCoverUrl, setExtractedCoverUrl] = useState<string | null>(null);
@@ -86,7 +130,7 @@ export const BookCard: React.FC<BookCardProps> = ({ book, onOpen, onDelete }) =>
     <div className="flex flex-col space-y-2.5 group relative select-none">
       {/* Book Cover */}
       <div
-        onClick={() => onOpen(book.id)}
+        onClick={handleOpenClick}
         className="relative aspect-[2/3] w-full rounded-xl overflow-hidden cursor-pointer bg-[var(--bg-secondary)] border border-[var(--border-color)] group-hover:border-[var(--border-hover)] shadow-sm group-hover:shadow-md transition-all duration-200 group-hover:-translate-y-1"
       >
         {coverUrl ? (
@@ -106,6 +150,23 @@ export const BookCard: React.FC<BookCardProps> = ({ book, onOpen, onDelete }) =>
           </div>
         )}
 
+        {/* Cloud Sync Status Badge */}
+        {!isDownloaded && (
+          <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/75 backdrop-blur-md text-[10px] font-semibold text-amber-300 flex items-center gap-1 shadow-xs border border-amber-400/20">
+            {isDownloading ? (
+              <>
+                <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                <span>Downloading...</span>
+              </>
+            ) : (
+              <>
+                <Cloud className="w-2.5 h-2.5" />
+                <span>Cloud</span>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Progress Overlay Tag */}
         {percentage > 0 && (
           <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[10px] font-semibold text-white">
@@ -116,8 +177,17 @@ export const BookCard: React.FC<BookCardProps> = ({ book, onOpen, onDelete }) =>
         {/* Hover Read Action Overlay */}
         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[2px]">
           <span className="px-4 py-1.5 rounded-full bg-[var(--accent-color)] text-white text-xs font-semibold shadow-md flex items-center gap-1.5">
-            <BookOpen className="w-3.5 h-3.5" />
-            <span>Read</span>
+            {isDownloading ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Syncing...</span>
+              </>
+            ) : (
+              <>
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>{!isDownloaded ? 'Download & Read' : 'Read'}</span>
+              </>
+            )}
           </span>
         </div>
       </div>
@@ -126,7 +196,7 @@ export const BookCard: React.FC<BookCardProps> = ({ book, onOpen, onDelete }) =>
       <div className="space-y-0.5">
         <div className="flex items-start justify-between gap-1">
           <h4
-            onClick={() => onOpen(book.id)}
+            onClick={handleOpenClick}
             className="text-xs font-bold text-[var(--text-primary)] line-clamp-1 leading-snug cursor-pointer group-hover:text-[var(--accent-color)] transition-colors"
             title={book.title}
           >

@@ -132,6 +132,16 @@ export class FontService {
     const { TombstoneService } = await import('./tombstoneService');
     await TombstoneService.recordTombstone(id, 'font');
     await db.customFonts.delete(id);
+
+    // Delete from Supabase remote table directly
+    try {
+      const { SupabaseService } = await import('./supabaseClient');
+      const supabase = await SupabaseService.getClient();
+      if (supabase) {
+        await supabase.from('custom_fonts').delete().eq('id', id);
+      }
+    } catch {}
+
     const { R2StorageService } = await import('./r2StorageService');
     const { SupabaseSyncService } = await import('./supabaseSyncService');
     R2StorageService.deleteFont(id).catch(() => {});
