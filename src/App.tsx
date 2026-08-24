@@ -620,7 +620,7 @@ export const App: React.FC = () => {
             onImportClick={() => fileInputRef.current?.click()}
           />
         ) : viewMode === 'shelf' ? (
-          <main className="flex-1 overflow-y-auto w-full max-w-[1600px] mx-auto pl-2.5 xs:pl-3.5 sm:pl-8 lg:pl-14 pr-[5px] xs:pr-[9px] sm:pr-[27px] lg:pr-[51px] py-4 sm:py-8 space-y-6 sm:space-y-8">
+          <main className="flex-1 overflow-y-auto w-full max-w-[1600px] mx-auto pl-2.5 xs:pl-3.5 sm:pl-8 lg:pl-14 pr-[2px] xs:pr-1 sm:pr-[18px] lg:pr-[42px] py-4 sm:py-8 space-y-6 sm:space-y-8">
             {/* Section 1: Hero Banner (Vibe Avatar + Monthly Streak Heatmap) */}
               <ShelfHeroBanner
                 customAvatar={settings.customAvatar}
