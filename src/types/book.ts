@@ -21,8 +21,8 @@ export interface IProgress {
   percentage: number;     // 0.0 -> 1.0 (0% - 100%)
   sectionIndex: number;   // Section index in spine
   sectionFraction?: number; // 0.0 -> 1.0 fraction within the current section (fallback when CFI is stale)
+  textAnchor?: string;    // First 50-80 chars of text currently at top of viewport (exact sentence positioning)
   chapterTitle?: string;
-  sectionCfiMap?: Record<string, string>; // Map of sectionHref / sectionIndex / chapterTitle to last read CFI
   updatedAt: number;
 }
 

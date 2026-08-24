@@ -24,9 +24,6 @@ export class StorageService {
     return SupabaseStorageService.uploadBook(bookId, fileBlob, fileHash);
   }
 
-  /**
-   * Download an EPUB book file from active cloud storage into local OPFS
-   */
   public static async downloadBook(bookId: string, storageKey: string): Promise<boolean> {
     if (ACTIVE_STORAGE_PROVIDER === 'r2') {
       return R2StorageService.downloadBook(bookId, storageKey);

@@ -90,7 +90,7 @@ export class SupabaseSyncService {
                 percentage: row.percentage,
                 sectionIndex: row.section_index,
                 chapterTitle: row.chapter_title,
-                sectionCfiMap: row.section_cfi_map || {},
+                textAnchor: row.text_anchor || '',
                 updatedAt: row.updated_at,
               });
             }
@@ -171,14 +171,11 @@ export class SupabaseSyncService {
               createdAt: row.created_at,
               updatedAt: row.updated_at,
             });
-            // Auto inject locally
-            try {
-              const { EPUBSummaryInjectorService } = await import('./epubSummaryInjectorService');
-              await EPUBSummaryInjectorService.injectSummariesIntoEPUB(row.book_id, row.href, row.summaries);
-            } catch {}
+            window.dispatchEvent(new CustomEvent('velvet:summaries-updated'));
           } else if (payload.eventType === 'DELETE') {
             const row: any = payload.old;
             if (row?.id) await db.chapterSummaries.delete(row.id);
+            window.dispatchEvent(new CustomEvent('velvet:summaries-updated'));
           }
         }
       )
@@ -358,7 +355,7 @@ export class SupabaseSyncService {
               percentage: p.percentage,
               sectionIndex: p.section_index,
               chapterTitle: p.chapter_title,
-              sectionCfiMap: p.section_cfi_map || {},
+              textAnchor: p.text_anchor || '',
               updatedAt: p.updated_at,
             });
           }
@@ -419,6 +416,7 @@ export class SupabaseSyncService {
             updatedAt: s.updated_at,
           }))
         );
+        window.dispatchEvent(new CustomEvent('velvet:summaries-updated'));
       }
 
       if (cloudFonts?.length) {
@@ -516,7 +514,7 @@ export class SupabaseSyncService {
         percentage: p.percentage,
         section_index: p.sectionIndex,
         chapter_title: p.chapterTitle || '',
-        section_cfi_map: p.sectionCfiMap || {},
+        text_anchor: p.textAnchor || '',
         updated_at: p.updatedAt || Date.now(),
       }));
       if (progressToUpsert.length) await supabase.from('progress').upsert(progressToUpsert);

@@ -144,23 +144,19 @@ export class BookService {
    */
   static async updateProgress(
     bookId: string,
-    progress: { cfi: string; percentage: number; sectionIndex: number; sectionFraction?: number; chapterTitle?: string; sectionHref?: string }
+    progress: {
+      cfi: string;
+      percentage: number;
+      sectionIndex: number;
+      sectionFraction?: number;
+      chapterTitle?: string;
+      sectionHref?: string;
+      textAnchor?: string;
+    }
   ): Promise<void> {
     const now = Date.now();
     await db.transaction('rw', [db.books, db.progress], async () => {
       const existing = await db.progress.get(bookId);
-      const sectionCfiMap = { ...(existing?.sectionCfiMap || {}) };
-
-      // Save CFI under sectionIndex, chapterTitle, and sectionHref
-      if (progress.cfi) {
-        sectionCfiMap[`sec_${progress.sectionIndex}`] = progress.cfi;
-        if (progress.chapterTitle) {
-          sectionCfiMap[`title_${progress.chapterTitle.trim().toLowerCase()}`] = progress.cfi;
-        }
-        if (progress.sectionHref) {
-          sectionCfiMap[`href_${progress.sectionHref}`] = progress.cfi;
-        }
-      }
 
       await db.progress.put({
         bookId,
@@ -168,8 +164,8 @@ export class BookService {
         percentage: Math.min(1, Math.max(0, progress.percentage)),
         sectionIndex: progress.sectionIndex,
         sectionFraction: progress.sectionFraction,
+        textAnchor: progress.textAnchor || existing?.textAnchor || '',
         chapterTitle: progress.chapterTitle,
-        sectionCfiMap,
         updatedAt: now,
       });
 

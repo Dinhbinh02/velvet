@@ -205,38 +205,25 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
         updatedAt: Date.now(),
       });
 
-      // 2. Inject summaries directly into the EPUB file in OPFS (permanent, CFI-safe)
-      let epubInjected = false;
-      if (bookId && targetHref) {
-        try {
+      // 2. Inject summaries live into the active chapter DOM
+      try {
+        const activeIframe =
+          viewEl?.renderer?.shadowRoot?.querySelector('iframe') ||
+          viewEl?.shadowRoot?.querySelector('iframe') ||
+          document.querySelector('foliate-view')?.shadowRoot?.querySelector('iframe');
+        const activeDoc = activeIframe?.contentDocument;
+        if (activeDoc) {
           const { EPUBSummaryInjectorService } = await import('@/src/services/epubSummaryInjectorService');
-          epubInjected = await EPUBSummaryInjectorService.injectSummariesIntoEPUB(bookId, targetHref, summaries);
-        } catch (epubErr) {
-          console.warn('EPUB file injection warning (will fall back to DOM):', epubErr);
+          EPUBSummaryInjectorService.injectSummariesIntoDOM(activeDoc, summaries);
         }
+      } catch (domErr) {
+        console.warn('Live DOM injection error:', domErr);
       }
 
-      // 3. Reload the book if EPUB was modified (so CFIs are recalculated from the new DOM)
-      //    Otherwise fall back to live DOM injection for the current session
-      if (epubInjected) {
-        // Full remount of FoliateViewer with the updated EPUB — CFI will be valid from the start
-        window.dispatchEvent(new CustomEvent('velvet:reload-book'));
-      } else {
-        // Fallback: live DOM injection for this session only (no OPFS write)
-        try {
-          const activeIframe = viewEl?.renderer?.shadowRoot?.querySelector('iframe') || viewEl?.shadowRoot?.querySelector('iframe') || document.querySelector('foliate-view')?.shadowRoot?.querySelector('iframe');
-          const activeDoc = activeIframe?.contentDocument;
-          if (activeDoc) {
-            const { EPUBSummaryInjectorService } = await import('@/src/services/epubSummaryInjectorService');
-            EPUBSummaryInjectorService.injectSummariesIntoDOM(activeDoc, summaries);
-          }
-        } catch (domErr) {
-          console.warn('Direct DOM injection fallback warning:', domErr);
-        }
-        window.dispatchEvent(new CustomEvent('velvet:summaries-updated', { detail: { bookId, href: targetHref } }));
-      }
+      // 3. Dispatch update event for reader and other components
+      window.dispatchEvent(new CustomEvent('velvet:summaries-updated', { detail: { bookId, href: targetHref } }));
 
-      // 4. Trigger cloud sync
+      // 4. Trigger background cloud sync
       if (bookId) {
         SupabaseSyncService.triggerAutoSync(3000);
       }
