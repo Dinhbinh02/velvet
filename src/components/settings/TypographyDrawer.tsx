@@ -210,8 +210,8 @@ export const TypographyDrawer: React.FC<TypographyDrawerProps> = ({
 
   return (
     <div ref={drawerRef} className="fixed right-0 top-0 bottom-0 w-84 bg-[var(--bg-surface)]/95 backdrop-blur-2xl border-l border-[var(--border-color)] shadow-2xl z-50 flex flex-col animate-in slide-in-from-right duration-200 select-none">
-      {/* Header */}
-      <div className="h-14 px-5 flex items-center border-b border-[var(--border-color)] shrink-0">
+      {/* Header with Safe Area Notch / Dynamic Island support */}
+      <div className="header-safe px-5 flex items-center border-b border-[var(--border-color)] bg-[var(--bg-surface)] shrink-0">
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-lg bg-[var(--accent-subtle)] text-[var(--accent-color)] flex items-center justify-center">
             <Type className="w-4 h-4" />

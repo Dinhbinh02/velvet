@@ -84,8 +84,8 @@ export const SearchDrawer: React.FC<SearchDrawerProps> = ({ onNavigate, onClose 
       ref={drawerRef}
       className="fixed right-0 top-0 bottom-0 w-84 bg-[var(--bg-surface)]/95 backdrop-blur-2xl border-l border-[var(--border-color)] shadow-2xl z-50 flex flex-col animate-in slide-in-from-right duration-200 select-none"
     >
-      {/* Header (Matching typography drawer with no X button) */}
-      <div className="h-14 px-5 flex items-center justify-between border-b border-[var(--border-color)] shrink-0">
+      {/* Header with Safe Area Notch / Dynamic Island support */}
+      <div className="header-safe px-5 flex items-center justify-between border-b border-[var(--border-color)] bg-[var(--bg-surface)] shrink-0">
         <div className="flex items-center gap-2">
           <Search className="w-4 h-4 text-[var(--accent-color)]" />
           <h3 className="font-bold text-sm text-[var(--text-primary)]">Search in Book</h3>
@@ -115,7 +115,7 @@ export const SearchDrawer: React.FC<SearchDrawerProps> = ({ onNavigate, onClose 
       </div>
 
       {/* Search Results List */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+      <div className="flex-1 overflow-y-auto p-3 space-y-2 pb-[max(2.5rem,env(safe-area-inset-bottom,40px))]">
         {isSearching && results.length === 0 ? (
           <div className="p-8 text-center space-y-2 text-xs text-[var(--text-muted)]">
             <Loader2 className="w-6 h-6 animate-spin mx-auto text-[var(--accent-color)]" />
