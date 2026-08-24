@@ -192,9 +192,8 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onOpenBook, onImpo
   };
 
   return (
-    <main className="flex-1 overflow-y-auto w-full bg-[var(--bg-primary)] select-none">
-      <div className="w-full max-w-[1600px] mx-auto px-2.5 xs:px-3.5 sm:px-8 lg:px-14 py-4 sm:py-8 space-y-6 sm:space-y-8">
-        {/* Top Header Area (Apple Books Style) */}
+    <main className="flex-1 overflow-y-auto w-full max-w-[1600px] mx-auto px-2.5 xs:px-3.5 sm:px-8 lg:px-14 py-4 sm:py-8 space-y-6 sm:space-y-8 bg-[var(--bg-primary)] select-none">
+      {/* Top Header Area (Apple Books Style) */}
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div>
             <span className="text-xs font-semibold text-[var(--accent-color)] uppercase tracking-wider mb-1 block">
@@ -532,7 +531,6 @@ export const DiscoveryView: React.FC<DiscoveryViewProps> = ({ onOpenBook, onImpo
             </a>
           </div>
         </div>
-      </div>
 
       {/* Book Preview Details Modal */}
       {previewBook && (
