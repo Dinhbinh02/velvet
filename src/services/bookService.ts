@@ -19,7 +19,6 @@ export class BookService {
     // 1. Smart Compression: Optimize large images & compute SHA-256 hash
     onProgress?.('optimizing', 10);
     const optimized = await EpubOptimizerService.optimizeEpub(file, (p) => {
-      // Scale optimization progress from 10% to 55%
       onProgress?.('optimizing', Math.round(10 + p * 0.45));
     });
     const finalBlob = optimized.blob;
@@ -59,12 +58,11 @@ export class BookService {
       updatedAt: now,
     };
 
-    // 6. Store in Dexie within a transaction and clear tombstone
+    // 6. Store in Dexie within a transaction
     onProgress?.('finalizing', 92);
-    await db.transaction('rw', [db.books, db.progress, db.tombstones], async () => {
+    await db.transaction('rw', [db.books, db.progress], async () => {
       await db.books.add(newBook);
       await db.progress.add(initialProgress);
-      await db.tombstones.delete(bookId);
     });
 
     // 7. Cloud backup (Supabase Storage) & auto sync
@@ -96,11 +94,7 @@ export class BookService {
     // 1. Delete OPFS binary file
     await OPFSStorageService.deleteBook(bookId).catch(() => {});
 
-    // 2. Record tombstone to prevent sync revival
-    const { TombstoneService } = await import('./tombstoneService');
-    await TombstoneService.recordTombstone(bookId, 'book');
-
-    // 3. Delete related records in Dexie
+    // 2. Delete related records in Dexie
     await db.transaction('rw', [db.books, db.progress, db.notes, db.highlights, db.comments, db.chapterSummaries, db.sessions], async () => {
       await Promise.all([
         db.books.delete(bookId),
@@ -113,7 +107,7 @@ export class BookService {
       ]);
     });
 
-    // 4. Delete directly from Supabase Database tables
+    // 3. Delete directly from Supabase Database tables
     try {
       const { SupabaseService } = await import('./supabaseClient');
       const supabase = await SupabaseService.getClient();
@@ -129,12 +123,11 @@ export class BookService {
       }
     } catch {}
 
-    // 5. Delete book file from Cloud Storage
+    // 4. Delete book file from Cloud Storage
     StorageService.deleteBook(bookId).catch(() => {});
 
-    // 6. Trigger sync to propagate deletion tombstones across devices
+    // 5. Trigger sync
     try {
-      const { SupabaseSyncService } = await import('./supabaseSyncService');
       SupabaseSyncService.triggerAutoSync(500);
     } catch {}
   }
@@ -169,7 +162,6 @@ export class BookService {
         updatedAt: now,
       });
 
-
       await db.books.update(bookId, {
         lastReadAt: now,
         isFinished: progress.percentage >= 0.99,
@@ -184,13 +176,11 @@ export class BookService {
     try {
       return await OPFSStorageService.getBookFile(bookId);
     } catch (err) {
-      // If missing in local browser OPFS, attempt download from Cloud Storage (Supabase Storage)
       const book = await db.books.get(bookId);
       const storageKey = book?.fileHash ? `${book.fileHash}.epub` : `${bookId}.epub`;
       const downloaded = await StorageService.downloadBook(bookId, storageKey);
       if (downloaded) {
         const file = await OPFSStorageService.getBookFile(bookId);
-        // Extract and restore cover image if missing
         try {
           const meta = await EPUBParserService.parseMetadata(file);
           if (meta.coverImage) {

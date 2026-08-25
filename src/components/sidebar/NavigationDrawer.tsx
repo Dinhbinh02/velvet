@@ -546,9 +546,15 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   };
 
   const handleDeleteComment = async (id: string) => {
-    const { TombstoneService } = await import('@/src/services/tombstoneService');
-    await TombstoneService.recordTombstone(id, 'comment');
     await db.comments.delete(id);
+    // Delete directly from Supabase
+    try {
+      const { SupabaseService } = await import('@/src/services/supabaseClient');
+      const supabase = await SupabaseService.getClient();
+      if (supabase) {
+        await supabase.from('comments').delete().eq('id', id);
+      }
+    } catch {}
     SupabaseSyncService.triggerAutoSync(15000);
     if (editingCommentId === id) setEditingCommentId(null);
   };

@@ -8,7 +8,39 @@ import { EpubOptimizerService } from './epubOptimizerService';
 import type { ICustomFont } from '../types/book';
 
 export class SupabaseStorageService {
-  private static uploadedHashes = new Set<string>();
+  private static getUploadedHashes(): Set<string> {
+    try {
+      const stored = localStorage.getItem('velvet_uploaded_book_hashes');
+      return new Set(stored ? JSON.parse(stored) : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  private static addUploadedHash(hash: string): void {
+    try {
+      const hashes = this.getUploadedHashes();
+      hashes.add(hash);
+      localStorage.setItem('velvet_uploaded_book_hashes', JSON.stringify(Array.from(hashes)));
+    } catch {}
+  }
+
+  private static getUploadedFontIds(): Set<string> {
+    try {
+      const stored = localStorage.getItem('velvet_uploaded_font_ids');
+      return new Set(stored ? JSON.parse(stored) : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  private static addUploadedFontId(fontId: string): void {
+    try {
+      const fontIds = this.getUploadedFontIds();
+      fontIds.add(fontId);
+      localStorage.setItem('velvet_uploaded_font_ids', JSON.stringify(Array.from(fontIds)));
+    } catch {}
+  }
 
   /**
    * Upload an EPUB book file to Supabase Storage bucket 'books'
@@ -24,7 +56,7 @@ export class SupabaseStorageService {
       const hash = fileHash || (await EpubOptimizerService.computeHash(file));
       const storageKey = `${hash}.epub`;
 
-      if (this.uploadedHashes.has(hash)) {
+      if (this.getUploadedHashes().has(hash)) {
         return storageKey;
       }
 
@@ -41,7 +73,7 @@ export class SupabaseStorageService {
         return '';
       }
 
-      this.uploadedHashes.add(hash);
+      this.addUploadedHash(hash);
       console.log(`[Supabase Storage] Book ${storageKey} uploaded successfully!`);
       return storageKey;
     } catch (err: any) {
@@ -129,6 +161,10 @@ export class SupabaseStorageService {
 
     try {
       const fileName = `${font.id}.${font.format || 'ttf'}`;
+      if (this.getUploadedFontIds().has(font.id)) {
+        return fileName;
+      }
+
       const res = await fetch(font.fontData);
       const fontBlob = await res.blob();
       const contentType = font.format === 'woff2' ? 'font/woff2' : font.format === 'woff' ? 'font/woff' : 'font/ttf';
@@ -146,6 +182,7 @@ export class SupabaseStorageService {
         return '';
       }
 
+      this.addUploadedFontId(font.id);
       console.log(`[Supabase Storage] Font ${font.name} (${fileName}) uploaded to 'fonts' bucket!`);
       return fileName;
     } catch (err) {

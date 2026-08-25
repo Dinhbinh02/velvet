@@ -112,10 +112,7 @@ export class FontService {
       createdAt: Date.now(),
     };
 
-    await db.transaction('rw', [db.customFonts, db.tombstones], async () => {
-      await db.customFonts.put(customFont);
-      await db.tombstones.delete(id);
-    });
+    await db.customFonts.put(customFont);
 
     const { StorageService } = await import('./storageService');
     const { SupabaseSyncService } = await import('./supabaseSyncService');
@@ -129,8 +126,6 @@ export class FontService {
    * Delete a custom font
    */
   static async deleteFont(id: string): Promise<void> {
-    const { TombstoneService } = await import('./tombstoneService');
-    await TombstoneService.recordTombstone(id, 'font');
     await db.customFonts.delete(id);
 
     // Delete from Supabase remote table directly

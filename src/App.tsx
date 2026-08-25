@@ -335,19 +335,19 @@ export const App: React.FC = () => {
     }
   }, [customFonts]);
 
-  // Load Supabase user and trigger initial sync + Realtime subscription
+  // Load Supabase user and pull cloud data on startup (cloud is authoritative)
   useEffect(() => {
     SupabaseService.getCurrentUser().then((u) => {
       setSupabaseUser(u);
       if (u) {
-        SupabaseSyncService.syncAll();
-        SupabaseSyncService.initRealtimeSubscription();
+        // Pull cloud → replace local entirely, then start Realtime listener
+        SupabaseSyncService.pullFromCloud();
       }
     });
 
-    // Periodic 10-minute sync while app is active
+    // Periodic pull every 10 minutes to stay in sync with cloud
     const syncInterval = setInterval(() => {
-      SupabaseSyncService.syncAll();
+      SupabaseSyncService.pullFromCloud();
     }, 10 * 60 * 1000);
 
     return () => clearInterval(syncInterval);
@@ -438,7 +438,8 @@ export const App: React.FC = () => {
               <button
                 onClick={() => {
                   setViewMode('shelf');
-                  SupabaseSyncService.syncAll();
+                  // Push reading progress to cloud when leaving reader
+                  SupabaseSyncService.pushToCloud();
                 }}
                 className="h-8 sm:h-9 px-2 sm:px-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text-primary)] transition-all cursor-pointer flex items-center justify-center gap-1 shrink-0 shadow-xs"
                 title="Back to Library"

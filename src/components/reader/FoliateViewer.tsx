@@ -363,11 +363,16 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
         } catch {}
       }
 
-      // 3. Delete corresponding highlight from Dexie & record tombstone
+      // 3. Delete corresponding highlight from Dexie & Supabase
       if (noteId) {
-        const { TombstoneService } = await import('@/src/services/tombstoneService');
-        await TombstoneService.recordTombstone(noteId, 'highlight');
         await db.highlights.delete(noteId);
+        try {
+          const { SupabaseService } = await import('@/src/services/supabaseClient');
+          const supabase = await SupabaseService.getClient();
+          if (supabase) {
+            await supabase.from('highlights').delete().eq('id', noteId);
+          }
+        } catch {}
         SupabaseSyncService.triggerAutoSync(15000);
       }
 
@@ -2269,18 +2274,29 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
                 try {
                   const el = floatingTooltip.highlightEl;
                   const highlightId = el?.getAttribute('data-note-id');
-                  const { TombstoneService } = await import('@/src/services/tombstoneService');
                   if (highlightId) {
-                    await TombstoneService.recordTombstone(highlightId, 'highlight');
                     await db.highlights.delete(highlightId);
+                    try {
+                      const { SupabaseService } = await import('@/src/services/supabaseClient');
+                      const supabase = await SupabaseService.getClient();
+                      if (supabase) {
+                        await supabase.from('highlights').delete().eq('id', highlightId);
+                      }
+                    } catch {}
                   } else {
                     // Fallback delete by text match
                     const text = floatingTooltip.text;
                     const matchingHl = await db.highlights.where('bookId').equals(bookId).toArray();
                     const target = matchingHl.find((h) => h.text === text);
                     if (target) {
-                      await TombstoneService.recordTombstone(target.id, 'highlight');
                       await db.highlights.delete(target.id);
+                      try {
+                        const { SupabaseService } = await import('@/src/services/supabaseClient');
+                        const supabase = await SupabaseService.getClient();
+                        if (supabase) {
+                          await supabase.from('highlights').delete().eq('id', target.id);
+                        }
+                      } catch {}
                     }
                   }
                   SupabaseSyncService.triggerAutoSync(15000);
@@ -2720,9 +2736,14 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
                 onClick={async () => {
                   try {
                     if (hoveredComment.id) {
-                      const { TombstoneService } = await import('@/src/services/tombstoneService');
-                      await TombstoneService.recordTombstone(hoveredComment.id, 'comment');
                       await db.comments.delete(hoveredComment.id);
+                      try {
+                        const { SupabaseService } = await import('@/src/services/supabaseClient');
+                        const supabase = await SupabaseService.getClient();
+                        if (supabase) {
+                          await supabase.from('comments').delete().eq('id', hoveredComment.id);
+                        }
+                      } catch {}
                       SupabaseSyncService.triggerAutoSync(20000);
 
                       const doc = currentDocRef.current;

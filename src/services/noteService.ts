@@ -1,7 +1,6 @@
 import { db } from '../db/schema';
 import type { INote } from '../types/book';
 import { SupabaseSyncService } from './supabaseSyncService';
-import { TombstoneService } from './tombstoneService';
 
 export class NoteService {
   /**
@@ -18,10 +17,7 @@ export class NoteService {
       updatedAt: now,
     };
 
-    await db.transaction('rw', [db.notes, db.tombstones], async () => {
-      await db.notes.add(note);
-      await db.tombstones.delete(note.id);
-    });
+    await db.notes.add(note);
     SupabaseSyncService.triggerAutoSync(15000);
     return note;
   }
@@ -41,9 +37,18 @@ export class NoteService {
    * Delete a note
    */
   static async deleteNote(noteId: string): Promise<void> {
-    await TombstoneService.recordTombstone(noteId, 'note');
     await db.notes.delete(noteId);
-    SupabaseSyncService.triggerAutoSync(15000);
+
+    // Delete directly from Supabase
+    try {
+      const { SupabaseService } = await import('./supabaseClient');
+      const supabase = await SupabaseService.getClient();
+      if (supabase) {
+        await supabase.from('notes').delete().eq('id', noteId);
+      }
+    } catch {}
+
+    SupabaseSyncService.triggerAutoSync(1000);
   }
 
   /**

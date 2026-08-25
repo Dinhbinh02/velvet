@@ -63,12 +63,18 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({ isOpen, onClose 
         const { user: newUser, error: signUpErr } = await SupabaseService.signUpWithEmail(authEmail, authPassword);
         if (signUpErr) throw signUpErr;
         setSupabaseUser(newUser);
-        setStatusMessage({ type: 'success', text: 'Account created & logged in!' });
+        setStatusMessage({ type: 'success', text: 'Account created & logged in! Syncing from cloud...' });
       } else {
         setSupabaseUser(user);
-        setStatusMessage({ type: 'success', text: 'Signed in successfully!' });
+        setStatusMessage({ type: 'info', text: 'Signed in! Syncing from cloud...' });
       }
-      await SupabaseSyncService.syncAll();
+      // Pull cloud data — cloud replaces local entirely
+      const res = await SupabaseSyncService.pullFromCloud();
+      if (res.success) {
+        setStatusMessage({ type: 'success', text: 'Synced! Your library is up to date.' });
+      } else {
+        setStatusMessage({ type: 'error', text: res.message });
+      }
     } catch (err: any) {
       setStatusMessage({ type: 'error', text: err.message || 'Authentication failed.' });
     } finally {
@@ -84,12 +90,12 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({ isOpen, onClose 
 
   const handleSyncNow = async () => {
     setIsAuthLoading(true);
-    setStatusMessage({ type: 'info', text: 'Synchronizing with Velvet Cloud...' });
-    const res = await SupabaseSyncService.syncAll();
+    setStatusMessage({ type: 'info', text: 'Pulling latest data from cloud...' });
+    const res = await SupabaseSyncService.pullFromCloud();
     setIsAuthLoading(false);
     setStatusMessage({
       type: res.success ? 'success' : 'error',
-      text: res.message,
+      text: res.success ? 'Library synced from cloud.' : res.message,
     });
   };
 
