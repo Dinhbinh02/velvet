@@ -256,17 +256,6 @@ export const ShelfHeroBanner: React.FC<ShelfHeroBannerProps> = ({
             })}
           </div>
         </div>
-
-        {/* Heatmap Legend */}
-        <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-1 text-[10px] text-[var(--text-muted)] pt-1 border-t border-[var(--border-color)]/40">
-          <span>Daily reading keeps streak burning 🔥</span>
-          <div className="flex items-center gap-1.5">
-            <span>Inactive</span>
-            <div className="w-2.5 h-2.5 rounded bg-[var(--bg-secondary)] border border-[var(--border-color)]" />
-            <div className="w-2.5 h-2.5 rounded bg-[var(--accent-color)]" />
-            <span className="text-[var(--accent-color)] font-semibold">Active</span>
-          </div>
-        </div>
       </div>
 
       {/* Avatar Picker Modal */}

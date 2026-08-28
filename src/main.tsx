@@ -2,6 +2,35 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
 
+// Global Patch: ensure shadow roots created by foliate-js have open mode and zero-width scrollbar to keep reading text perfectly centered
+if (typeof Element !== 'undefined' && !(Element.prototype as any).__velvet_shadow_patched) {
+  const origAttachShadow = Element.prototype.attachShadow;
+  Element.prototype.attachShadow = function (init: ShadowRootInit) {
+    const shadow = origAttachShadow.call(this, { ...init, mode: 'open' });
+    try {
+      const style = document.createElement('style');
+      style.id = 'velvet-global-shadow-style';
+      style.textContent = `
+        :host([flow="scrolled"]) #container, #container, div#container {
+          overflow-y: auto !important;
+          overflow-x: hidden !important;
+          scrollbar-width: none !important;
+          -ms-overflow-style: none !important;
+        }
+        #container::-webkit-scrollbar, :host([flow="scrolled"]) #container::-webkit-scrollbar, div#container::-webkit-scrollbar {
+          display: none !important;
+          width: 0 !important;
+          height: 0 !important;
+          background: transparent !important;
+        }
+      `;
+      shadow.appendChild(style);
+    } catch {}
+    return shadow;
+  };
+  (Element.prototype as any).__velvet_shadow_patched = true;
+}
+
 // Filter out benign Chromium engine warning regarding iframe sandbox attribute in reader
 const originalWarn = console.warn;
 console.warn = function (...args: any[]) {

@@ -91,6 +91,12 @@ export class BookService {
    * Permanently delete a book, all its associated user data, and its OPFS binary
    */
   static async deleteBookCompletely(bookId: string): Promise<void> {
+    let bookFileHash: string | undefined;
+    try {
+      const book = await db.books.get(bookId);
+      bookFileHash = book?.fileHash;
+    } catch {}
+
     // 1. Delete OPFS binary file
     await OPFSStorageService.deleteBook(bookId).catch(() => {});
 
@@ -111,20 +117,27 @@ export class BookService {
     try {
       const { SupabaseService } = await import('./supabaseClient');
       const supabase = await SupabaseService.getClient();
-      if (supabase) {
+      const user = await SupabaseService.getCurrentUser();
+      if (supabase && user) {
         await Promise.allSettled([
-          supabase.from('books').delete().eq('id', bookId),
-          supabase.from('progress').delete().eq('book_id', bookId),
-          supabase.from('highlights').delete().eq('book_id', bookId),
-          supabase.from('notes').delete().eq('book_id', bookId),
-          supabase.from('comments').delete().eq('book_id', bookId),
-          supabase.from('chapter_summaries').delete().eq('book_id', bookId),
+          supabase.from('books').delete().eq('id', bookId).eq('user_id', user.id),
+          supabase.from('progress').delete().eq('book_id', bookId).eq('user_id', user.id),
+          supabase.from('highlights').delete().eq('book_id', bookId).eq('user_id', user.id),
+          supabase.from('notes').delete().eq('book_id', bookId).eq('user_id', user.id),
+          supabase.from('comments').delete().eq('book_id', bookId).eq('user_id', user.id),
+          supabase.from('chapter_summaries').delete().eq('book_id', bookId).eq('user_id', user.id),
         ]);
       }
-    } catch {}
+    } catch (e) {
+      console.warn('[BookService] Cloud DB delete failed:', e);
+    }
 
     // 4. Delete book file from Cloud Storage
-    StorageService.deleteBook(bookId).catch(() => {});
+    const storageKeysToDelete = [`${bookId}.epub`];
+    if (bookFileHash) storageKeysToDelete.push(`${bookFileHash}.epub`);
+    for (const key of storageKeysToDelete) {
+      StorageService.deleteBook(key).catch(() => {});
+    }
 
     // 5. Trigger sync
     try {

@@ -862,6 +862,7 @@ export const App: React.FC = () => {
                 error={wordLookupError}
                 fontFamily={settings.fontFamily}
                 fontSize={settings.fontSize}
+                maxWidth={settings.maxWidth}
                 onClose={handleCloseWordModal}
                 onOpenSettings={handleOpenGeminiSettings}
               />

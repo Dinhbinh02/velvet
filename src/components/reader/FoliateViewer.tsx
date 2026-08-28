@@ -680,6 +680,7 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
     // Direct update: update foliate-view and paginator background attribute/styles
     const palette = THEME_PALETTES[theme] || THEME_PALETTES.paper;
     const bgColor = palette.bg;
+    const isContinuous = settings?.layoutMode === 'continuous';
 
     try {
       if (renderer.shadowRoot) {
@@ -687,6 +688,27 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
         if (bgEl) {
           bgEl.style.backgroundColor = bgColor;
         }
+
+        let shadowStyle = renderer.shadowRoot.getElementById('velvet-shadow-scroll-style') as HTMLStyleElement | null;
+        if (!shadowStyle) {
+          shadowStyle = document.createElement('style');
+          shadowStyle.id = 'velvet-shadow-scroll-style';
+          renderer.shadowRoot.appendChild(shadowStyle);
+        }
+        shadowStyle.textContent = `
+          :host([flow="scrolled"]) #container, #container, div#container {
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+            scrollbar-width: none !important;
+            -ms-overflow-style: none !important;
+          }
+          #container::-webkit-scrollbar, :host([flow="scrolled"]) #container::-webkit-scrollbar, div#container::-webkit-scrollbar {
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
+            background: transparent !important;
+          }
+        `;
       }
     } catch {}
 
@@ -715,7 +737,6 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
     }
 
     // 2. Set flow mode (paginated vs continuous scroll)
-    const isContinuous = settings?.layoutMode === 'continuous';
     renderer.setAttribute('flow', isContinuous ? 'scrolled' : 'paginated');
 
     // 3. Margin & Gap responsive for mobile and desktop
@@ -2165,6 +2186,7 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
 
       {/* Foliate Viewer Mount Node */}
       <div
+        id="foliate-container"
         ref={containerRef}
         className={`w-full h-full cursor-default select-text transition-opacity duration-300 ${
           isLoading ? 'opacity-0 pointer-events-none' : 'opacity-100'

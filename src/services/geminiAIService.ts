@@ -7,12 +7,11 @@
  */
 
 export interface IWordExplanation {
-  word: string;
+  word?: string;
   ipa?: string;
-  partOfSpeech?: string;
-  simpleDefinition: string;
-  synonyms: string[];
-  contextExplanation?: string;
+  simpleDefinition?: string;
+  contextExplanation: string;
+  isSentence?: boolean;
 }
 
 export class GeminiAIService {
@@ -30,7 +29,7 @@ export class GeminiAIService {
   }
 
   /**
-   * Look up a word using Gemini AI with key rotation
+   * Look up a word or explain a sentence using Gemini AI with key rotation
    */
   public static async explainWord(
     word: string,
@@ -45,13 +44,33 @@ export class GeminiAIService {
 
     const trimmedWord = word.trim();
     const cleanContext = contextSection ? contextSection.slice(0, 3000) : '';
+    const wordCount = trimmedWord.split(/\s+/).filter(Boolean).length;
+    const isSentence = wordCount > 3 || (/[.?!;]/.test(trimmedWord) && wordCount > 2);
 
-    const systemInstruction = `You are an expert British English linguist and dictionary editor (Oxford & Cambridge English standards).
+    const systemInstruction = isSentence
+      ? `You are an expert English literature tutor and linguist.
+Explain selected sentences or passages in VERY SIMPLE, PLAIN, EASY-TO-UNDERSTAND BRITISH ENGLISH (en-GB).
+Break down complex sentences, metaphors, idioms, or archaic phrasing so any reader understands clearly and effortlessly.
+Always respond in strictly valid JSON without markdown fences or extra commentary.`
+      : `You are an expert British English linguist and dictionary editor (Oxford & Cambridge English standards).
 Explain words in VERY SIMPLE, PLAIN, EASY-TO-UNDERSTAND BRITISH ENGLISH (en-GB). Avoid academic or obscure definitions.
 Always provide the precise standard British English (Received Pronunciation / UK) IPA phonetic transcription using standard Unicode IPA symbols and the proper primary stress mark /ˈ/ (U+02C8) (e.g. /ˈeŋ.kleɪv/, /ˈdɒm.ɪ.saɪl/, /ˈskedʒ.uːl/).
 Always respond in strictly valid JSON without markdown fences or extra commentary.`;
 
-    const prompt = `Context: From the book "${bookTitle || 'the book'}" in the current chapter/section:
+    const prompt = isSentence
+      ? `Context: From the book "${bookTitle || 'the book'}" in the current chapter/section:
+"""
+${cleanContext}
+"""
+
+Please explain what this sentence/passage means in this context in plain everyday English:
+"${trimmedWord}"
+
+Return ONLY a JSON object with this exact structure:
+{
+  "contextExplanation": "A clear, plain, and easy-to-understand explanation of what this sentence means in this context, breaking down any tricky metaphors, idioms, or archaic phrasing."
+}`
+      : `Context: From the book "${bookTitle || 'the book'}" in the current chapter/section:
 """
 ${cleanContext}
 """
@@ -62,9 +81,7 @@ Return ONLY a JSON object with this exact structure:
 {
   "word": "${trimmedWord}",
   "ipa": "/.../", // Standard British English (UK / RP) IPA pronunciation with proper IPA symbols & stress mark /ˈ/ (e.g. /ˈeŋ.kleɪv/, /ˈdɒm.ɪ.saɪl/)
-  "partOfSpeech": "noun / verb / adjective / etc",
   "simpleDefinition": "A very simple, clear explanation in British English of what this word means in this context, using everyday English words.",
-  "synonyms": ["simple synonym 1", "simple synonym 2", "simple synonym 3"],
   "contextExplanation": "One short simple sentence explaining what it specifically refers to in this sentence or chapter."
 }`;
 
@@ -119,6 +136,13 @@ Return ONLY a JSON object with this exact structure:
         const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
         const parsed: IWordExplanation = JSON.parse(cleanJson);
 
+        if (isSentence) {
+          return {
+            contextExplanation: parsed.contextExplanation || parsed.simpleDefinition || 'No explanation available.',
+            isSentence: true,
+          };
+        }
+
         // Normalize IPA string: replace standard ASCII apostrophes/single quotes with true Unicode IPA stress marks
         let rawIpa = (parsed.ipa || '').trim();
         if (rawIpa) {
@@ -131,10 +155,9 @@ Return ONLY a JSON object with this exact structure:
         return {
           word: parsed.word || trimmedWord,
           ipa: rawIpa,
-          partOfSpeech: parsed.partOfSpeech || '',
           simpleDefinition: parsed.simpleDefinition || 'No definition found.',
-          synonyms: Array.isArray(parsed.synonyms) ? parsed.synonyms : [],
           contextExplanation: parsed.contextExplanation || '',
+          isSentence: false,
         };
       } catch (err) {
         lastError = err;
