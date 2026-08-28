@@ -62,14 +62,6 @@ export interface IChapterSummary {
   updatedAt: number;
 }
 
-export type TombstoneType = 'book' | 'note' | 'highlight' | 'comment' | 'font' | 'chapterSummary';
-
-export interface ITombstone {
-  id: string;             // Entity ID that was deleted
-  type: TombstoneType;    // Entity type
-  deletedAt: number;      // Epoch timestamp of deletion
-}
-
 export interface IComment {
   id: string;             // UUID v4
   bookId: string;         // Foreign key

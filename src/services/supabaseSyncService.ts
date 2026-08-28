@@ -1,10 +1,11 @@
 /**
  * Supabase Cloud-First Synchronization Service for Velvet
  *
- * Architecture: Cloud is the single source of truth (no tombstones needed).
- * - pullFromCloud(): Replace local data entirely with cloud data (cloud wins).
- * - pushToCloud(): Push local data up to cloud (used after user actions).
- * - syncAll(): Alias for pullFromCloud().
+ * Inspired by Lumina's Cloud-First architecture:
+ * - Cloud is the single authoritative source of truth.
+ * - pullFromCloud(): Wipes and replaces local Dexie & OPFS with cloud state (Cloud wins).
+ * - pushToCloud(): Synchronizes local records and binaries up to Cloud.
+ * - cleanDuplicates(): Purges duplicate books/notes/highlights and orphan storage files.
  */
 import { SupabaseService } from './supabaseClient';
 import { StorageService } from './storageService';
@@ -20,7 +21,7 @@ export class SupabaseSyncService {
   /**
    * Debounced push to cloud after local user actions (import book, save progress, etc.)
    */
-  public static triggerAutoSync(delayMs = 15000): void {
+  public static triggerAutoSync(delayMs = 3000): void {
     if (this.autoSyncTimer) {
       clearTimeout(this.autoSyncTimer);
     }
@@ -64,6 +65,7 @@ export class SupabaseSyncService {
           } else if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const b: any = payload.new;
             if (!b?.id) return;
+            const fileHash = b.r2_key ? b.r2_key.replace(/^books\//, '').replace(/\.epub$/i, '') : undefined;
             const exists = await db.books.get(b.id);
             if (!exists) {
               await db.books.put({
@@ -72,12 +74,15 @@ export class SupabaseSyncService {
                 author: b.author,
                 opfsPath: `books/${b.id}.epub`,
                 fileSize: b.file_size,
-                format: b.format,
+                fileHash,
+                format: b.format || 'epub',
                 totalChapters: b.total_chapters,
                 addedAt: b.added_at,
                 lastReadAt: b.last_read_at,
                 isFinished: b.is_finished,
               });
+              // Download binary in background
+              StorageService.downloadBook(b.id, b.r2_key).catch(() => {});
             }
           }
         }
@@ -214,7 +219,7 @@ export class SupabaseSyncService {
     try {
       // 1. Fetch all cloud data in parallel
       const [
-        { data: cloudBooks },
+        { data: rawCloudBooks },
         { data: cloudProgress },
         { data: cloudHighlights },
         { data: cloudNotes },
@@ -232,6 +237,30 @@ export class SupabaseSyncService {
         supabase.from('custom_fonts').select('*').eq('user_id', user.id),
         supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
       ]);
+
+      // 1b. Automatic Deduplication & Self-Healing (Seamless background cleanup)
+      let cloudBooks = rawCloudBooks || [];
+      if (cloudBooks.length > 1) {
+        const titleAuthorMap = new Map<string, any[]>();
+        for (const b of cloudBooks) {
+          const key = `${(b.title || '').trim().toLowerCase()}:::${(b.author || '').trim().toLowerCase()}`;
+          if (!titleAuthorMap.has(key)) titleAuthorMap.set(key, []);
+          titleAuthorMap.get(key)!.push(b);
+        }
+
+        const hasDuplicates = Array.from(titleAuthorMap.values()).some((grp) => grp.length > 1);
+        if (hasDuplicates) {
+          // Trigger cleanDuplicates silently in background to heal cloud DB & storage
+          this.cleanDuplicates().catch(() => {});
+          // Deduplicate the list in memory for immediate clean UI
+          const filtered: any[] = [];
+          for (const grp of titleAuthorMap.values()) {
+            grp.sort((a, b) => (b.last_read_at || b.added_at || 0) - (a.last_read_at || a.added_at || 0));
+            filtered.push(grp[0]);
+          }
+          cloudBooks = filtered;
+        }
+      }
 
       // 2. Replace local books with cloud books
       const cloudBookIds = new Set((cloudBooks || []).map((b: any) => b.id));
@@ -253,7 +282,7 @@ export class SupabaseSyncService {
         }
       }
 
-      // Upsert cloud books into local Dexie
+      // Upsert cloud books into local Dexie and download EPUB binaries if missing
       if (cloudBooks?.length) {
         for (const b of cloudBooks) {
           const existing = await db.books.get(b.id);
@@ -270,6 +299,10 @@ export class SupabaseSyncService {
             }
           }
 
+          const fileHash = b.r2_key
+            ? b.r2_key.replace(/^books\//, '').replace(/\.epub$/i, '')
+            : existing?.fileHash;
+
           await db.books.put({
             id: b.id,
             title: b.title,
@@ -277,28 +310,33 @@ export class SupabaseSyncService {
             coverImage: (coverBlob as Blob) || existing?.coverImage || undefined,
             opfsPath: `books/${b.id}.epub`,
             fileSize: b.file_size,
-            format: b.format,
+            fileHash,
+            format: b.format || 'epub',
             totalChapters: b.total_chapters,
             addedAt: b.added_at,
             lastReadAt: b.last_read_at,
             isFinished: b.is_finished,
           });
 
-          // Download EPUB binary to OPFS in background if missing
-          OPFSStorageService.getBookFile(b.id).catch(async () => {
-            const storageKey = b.r2_key || `books/${b.id}.epub`;
-            const downloaded = await StorageService.downloadBook(b.id, storageKey);
-            if (downloaded && !coverBlob) {
-              try {
-                const file = await OPFSStorageService.getBookFile(b.id);
-                const { EPUBParserService } = await import('./epubParser');
-                const meta = await EPUBParserService.parseMetadata(file);
-                if (meta.coverImage) {
-                  await db.books.update(b.id, { coverImage: meta.coverImage });
-                }
-              } catch {}
-            }
-          });
+          // Check if physical file exists in OPFS; if not, download it
+          try {
+            const file = await OPFSStorageService.getBookFile(b.id);
+            if (!file || file.size === 0) throw new Error('File missing');
+          } catch {
+            const storageKey = b.r2_key || (fileHash ? `books/${fileHash}.epub` : `books/${b.id}.epub`);
+            StorageService.downloadBook(b.id, storageKey).then(async (downloaded) => {
+              if (downloaded && !coverBlob) {
+                try {
+                  const file = await OPFSStorageService.getBookFile(b.id);
+                  const { EPUBParserService } = await import('./epubParser');
+                  const meta = await EPUBParserService.parseMetadata(file);
+                  if (meta.coverImage) {
+                    await db.books.update(b.id, { coverImage: meta.coverImage });
+                  }
+                } catch {}
+              }
+            }).catch(() => {});
+          }
         }
       }
 
@@ -453,7 +491,7 @@ export class SupabaseSyncService {
           db.customFonts.toArray(),
         ]);
 
-      // Push books
+      // Push books and upload missing binaries
       if (localBooks.length) {
         const booksToUpsert = await Promise.all(
           localBooks.map(async (b) => {
@@ -468,6 +506,9 @@ export class SupabaseSyncService {
                 });
               } catch {}
             }
+
+            const storageKey = b.fileHash ? `${b.fileHash}.epub` : `${b.id}.epub`;
+
             return {
               id: b.id,
               user_id: user.id,
@@ -476,7 +517,7 @@ export class SupabaseSyncService {
               file_size: b.fileSize || 0,
               format: b.format || 'epub',
               total_chapters: b.totalChapters || 0,
-              r2_key: b.fileHash ? `books/${b.fileHash}.epub` : `books/${b.id}.epub`,
+              r2_key: `books/${storageKey}`,
               cover_url: coverUrl || undefined,
               added_at: b.addedAt || Date.now(),
               last_read_at: b.lastReadAt || Date.now(),
@@ -484,10 +525,13 @@ export class SupabaseSyncService {
             };
           })
         );
+
         await supabase.from('books').upsert(booksToUpsert);
-        localBooks.forEach((b) => {
+
+        // Upload any book binaries that are in OPFS
+        for (const b of localBooks) {
           StorageService.uploadBook(b.id, undefined, b.fileHash).catch(() => {});
-        });
+        }
       }
 
       // Push progress
@@ -625,9 +669,13 @@ export class SupabaseSyncService {
   }
 
   /**
-   * Cleans duplicate database records and orphaned storage files in Supabase.
+   * Cleans duplicate database records, links orphan storage files, and heals missing OPFS binaries.
    */
-  public static async cleanDuplicates(): Promise<{ success: boolean; deletedCount: number; details: Record<string, number> }> {
+  public static async cleanDuplicates(): Promise<{
+    success: boolean;
+    deletedCount: number;
+    details: Record<string, number>;
+  }> {
     const supabase = await SupabaseService.getClient();
     const user = await SupabaseService.getCurrentUser();
     if (!supabase || !user) return { success: false, deletedCount: 0, details: {} };
@@ -646,22 +694,63 @@ export class SupabaseSyncService {
     };
 
     try {
-      // 1. Deduplicate Books (same title & author)
+      // 1. Fetch current Storage files in 'books' bucket
+      const { data: storageBookFiles } = await supabase.storage.from('books').list('', { limit: 1000 });
+      const availableBucketFiles = (storageBookFiles || []).filter((f) => f.name.endsWith('.epub'));
+
+      // 2. Deduplicate Books (same title & author)
       const { data: books } = await supabase.from('books').select('*').eq('user_id', user.id);
-      if (books && books.length > 1) {
+      if (books && books.length > 0) {
         const bookMap = new Map<string, any[]>();
         for (const b of books) {
           const key = `${(b.title || '').trim().toLowerCase()}:::${(b.author || '').trim().toLowerCase()}`;
           if (!bookMap.has(key)) bookMap.set(key, []);
           bookMap.get(key)!.push(b);
         }
+
         for (const [_, group] of bookMap.entries()) {
+          // Sort to keep the most recent book
+          group.sort((a, b) => (b.last_read_at || b.added_at || 0) - (a.last_read_at || a.added_at || 0));
+          const survivingBook = group[0];
+
+          // If there is an existing file in bucket (e.g. 2eeb5b10b...epub) match it with surviving book
+          if (availableBucketFiles.length > 0) {
+            let matchedStorageFile = availableBucketFiles.find(
+              (f) => f.name === `${survivingBook.id}.epub` || (survivingBook.r2_key && f.name === survivingBook.r2_key.replace(/^books\//, ''))
+            );
+            if (!matchedStorageFile && availableBucketFiles.length === 1) {
+              matchedStorageFile = availableBucketFiles[0];
+            }
+            if (matchedStorageFile) {
+              const properR2Key = `books/${matchedStorageFile.name}`;
+              const properHash = matchedStorageFile.name.replace(/\.epub$/i, '');
+              await supabase.from('books').update({ r2_key: properR2Key }).eq('id', survivingBook.id);
+              await db.books.update(survivingBook.id, { fileHash: properHash });
+              // Download to local OPFS if not present
+              await StorageService.downloadBook(survivingBook.id, properR2Key);
+            }
+          }
+
+          // Delete duplicates
           if (group.length > 1) {
-            group.sort((a, b) => (b.last_read_at || b.added_at || 0) - (a.last_read_at || a.added_at || 0));
             const toDelete = group.slice(1);
             for (const b of toDelete) {
               console.log(`[Sync] Deleting duplicate book in Supabase: "${b.title}" (id: ${b.id})`);
-              await supabase.from('books').delete().eq('id', b.id);
+              await Promise.allSettled([
+                supabase.from('books').delete().eq('id', b.id),
+                supabase.from('progress').delete().eq('book_id', b.id),
+                supabase.from('notes').delete().eq('book_id', b.id),
+                supabase.from('highlights').delete().eq('book_id', b.id),
+                supabase.from('comments').delete().eq('book_id', b.id),
+                supabase.from('chapter_summaries').delete().eq('book_id', b.id),
+                db.books.delete(b.id),
+                db.progress.delete(b.id),
+                db.notes.where('bookId').equals(b.id).delete(),
+                db.highlights.where('bookId').equals(b.id).delete(),
+                db.comments.where('bookId').equals(b.id).delete(),
+                db.chapterSummaries.where('bookId').equals(b.id).delete(),
+                OPFSStorageService.deleteBook(b.id),
+              ]);
               details.books++;
               totalDeleted++;
             }
@@ -669,7 +758,7 @@ export class SupabaseSyncService {
         }
       }
 
-      // 2. Deduplicate Highlights (same book_id, text, color)
+      // 3. Deduplicate Highlights (same book_id, text, color)
       const { data: highlights } = await supabase.from('highlights').select('*').eq('user_id', user.id);
       if (highlights && highlights.length > 1) {
         const hMap = new Map<string, any[]>();
@@ -684,6 +773,7 @@ export class SupabaseSyncService {
             const toDelete = group.slice(1);
             for (const h of toDelete) {
               await supabase.from('highlights').delete().eq('id', h.id);
+              await db.highlights.delete(h.id);
               details.highlights++;
               totalDeleted++;
             }
@@ -691,7 +781,7 @@ export class SupabaseSyncService {
         }
       }
 
-      // 3. Deduplicate Notes (same book_id, content)
+      // 4. Deduplicate Notes (same book_id, content)
       const { data: notes } = await supabase.from('notes').select('*').eq('user_id', user.id);
       if (notes && notes.length > 1) {
         const nMap = new Map<string, any[]>();
@@ -706,6 +796,7 @@ export class SupabaseSyncService {
             const toDelete = group.slice(1);
             for (const n of toDelete) {
               await supabase.from('notes').delete().eq('id', n.id);
+              await db.notes.delete(n.id);
               details.notes++;
               totalDeleted++;
             }
@@ -713,7 +804,7 @@ export class SupabaseSyncService {
         }
       }
 
-      // 4. Deduplicate Comments (same book_id, selected_text, comment)
+      // 5. Deduplicate Comments (same book_id, selected_text, comment)
       const { data: comments } = await supabase.from('comments').select('*').eq('user_id', user.id);
       if (comments && comments.length > 1) {
         const cMap = new Map<string, any[]>();
@@ -728,6 +819,7 @@ export class SupabaseSyncService {
             const toDelete = group.slice(1);
             for (const c of toDelete) {
               await supabase.from('comments').delete().eq('id', c.id);
+              await db.comments.delete(c.id);
               details.comments++;
               totalDeleted++;
             }
@@ -735,7 +827,7 @@ export class SupabaseSyncService {
         }
       }
 
-      // 5. Deduplicate Custom Fonts (same font name)
+      // 6. Deduplicate Custom Fonts (same font name)
       const { data: fonts } = await supabase.from('custom_fonts').select('*').eq('user_id', user.id);
       if (fonts && fonts.length > 1) {
         const fMap = new Map<string, any[]>();
@@ -750,6 +842,7 @@ export class SupabaseSyncService {
             const toDelete = group.slice(1);
             for (const f of toDelete) {
               await supabase.from('custom_fonts').delete().eq('id', f.id);
+              await db.customFonts.delete(f.id);
               details.fonts++;
               totalDeleted++;
             }
@@ -757,7 +850,7 @@ export class SupabaseSyncService {
         }
       }
 
-      // 6. Clean Storage Buckets ('books' and 'fonts')
+      // 7. Clean truly orphaned Storage Buckets files
       try {
         const { data: remainingBooks } = await supabase.from('books').select('id, r2_key').eq('user_id', user.id);
         const activeBookKeys = new Set<string>();
@@ -768,11 +861,10 @@ export class SupabaseSyncService {
           }
         });
 
-        const { data: storageBookFiles } = await supabase.storage.from('books').list();
         if (storageBookFiles && storageBookFiles.length > 0) {
           const toRemove: string[] = [];
           for (const file of storageBookFiles) {
-            if (!activeBookKeys.has(file.name)) {
+            if (!activeBookKeys.has(file.name) && !file.name.startsWith('.')) {
               toRemove.push(file.name);
             }
           }
@@ -796,7 +888,7 @@ export class SupabaseSyncService {
   }
 
   /**
-   * SYNC ALL — Backward-compatible entry point.
+   * SYNC ALL — Cloud-First authoritative pull.
    */
   public static async syncAll(): Promise<{ success: boolean; message: string }> {
     return await this.pullFromCloud();

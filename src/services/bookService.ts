@@ -65,9 +65,54 @@ export class BookService {
       await db.progress.add(initialProgress);
     });
 
-    // 7. Cloud backup (Supabase Storage) & auto sync
-    StorageService.uploadBook(bookId, finalBlob, optimized.fileHash).catch(() => {});
-    SupabaseSyncService.triggerAutoSync(3000);
+    // 7. Cloud backup (Supabase Storage & DB record)
+    try {
+      const storageKey = await StorageService.uploadBook(bookId, finalBlob, optimized.fileHash);
+      const { SupabaseService } = await import('./supabaseClient');
+      const supabase = await SupabaseService.getClient();
+      const user = await SupabaseService.getCurrentUser();
+      if (supabase && user) {
+        let coverUrl = '';
+        if (newBook.coverImage) {
+          try {
+            coverUrl = await new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve((reader.result as string) || '');
+              reader.onerror = () => resolve('');
+              reader.readAsDataURL(newBook.coverImage as Blob);
+            });
+          } catch {}
+        }
+        await supabase.from('books').upsert({
+          id: bookId,
+          user_id: user.id,
+          title: newBook.title,
+          author: newBook.author || '',
+          file_size: newBook.fileSize,
+          format: 'epub',
+          total_chapters: newBook.totalChapters || 0,
+          r2_key: `books/${storageKey || `${optimized.fileHash}.epub`}`,
+          cover_url: coverUrl || undefined,
+          added_at: newBook.addedAt,
+          last_read_at: newBook.lastReadAt,
+          is_finished: false,
+        });
+        await supabase.from('progress').upsert({
+          user_id: user.id,
+          book_id: bookId,
+          cfi: '',
+          percentage: 0,
+          section_index: 0,
+          chapter_title: '',
+          text_anchor: '',
+          updated_at: now,
+        });
+      }
+    } catch (err) {
+      console.warn('[BookService] Immediate cloud upload warning:', err);
+    }
+
+    SupabaseSyncService.triggerAutoSync(1000);
 
     onProgress?.('ready', 100);
     return bookId;
@@ -113,7 +158,7 @@ export class BookService {
       ]);
     });
 
-    // 3. Delete directly from Supabase Database tables
+    // 3. Delete directly from Supabase Database tables (Cloud-First authoritative delete)
     try {
       const { SupabaseService } = await import('./supabaseClient');
       const supabase = await SupabaseService.getClient();

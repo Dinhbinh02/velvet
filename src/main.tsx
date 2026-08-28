@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
+import './services/syncDebugger';
 
 // Global Patch: ensure shadow roots created by foliate-js have open mode and zero-width scrollbar to keep reading text perfectly centered
 if (typeof Element !== 'undefined' && !(Element.prototype as any).__velvet_shadow_patched) {
