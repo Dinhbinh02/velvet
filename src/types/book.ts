@@ -20,8 +20,10 @@ export interface IProgress {
   cfi: string;            // EPUB-CFI location string
   percentage: number;     // 0.0 -> 1.0 (0% - 100%)
   sectionIndex: number;   // Section index in spine
+  sectionHref?: string;   // Section href in spine
   sectionFraction?: number; // 0.0 -> 1.0 fraction within the current section (fallback when CFI is stale)
   textAnchor?: string;    // First 50-80 chars of text currently at top of viewport (exact sentence positioning)
+  anchorOffset?: number;  // Pixel offset from top of viewport when anchored
   chapterTitle?: string;
   updatedAt: number;
 }

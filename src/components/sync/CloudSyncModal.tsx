@@ -161,13 +161,21 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({ isOpen, onClose 
                         <img
                           src={userAvatar}
                           alt={userName || 'User'}
+                          referrerPolicy="no-referrer"
                           className="w-10 h-10 rounded-full border border-[var(--border-color)] object-cover shrink-0"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLElement).style.display = 'none';
+                            const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                            if (fallback) fallback.style.display = 'flex';
+                          }}
                         />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-[var(--accent-subtle)] text-[var(--accent-color)] flex items-center justify-center font-bold text-sm shrink-0">
-                          {supabaseUser.email?.[0]?.toUpperCase() || 'U'}
-                        </div>
-                      )}
+                      ) : null}
+                      <div
+                        className="w-10 h-10 rounded-full bg-[var(--accent-subtle)] text-[var(--accent-color)] items-center justify-center font-bold text-sm shrink-0"
+                        style={{ display: userAvatar ? 'none' : 'flex' }}
+                      >
+                        {userName?.[0]?.toUpperCase() || supabaseUser.email?.[0]?.toUpperCase() || 'U'}
+                      </div>
                       <div className="min-w-0">
                         <p className="font-bold text-xs text-[var(--text-primary)] truncate">{userName || supabaseUser.email}</p>
                         <p className="text-[11px] text-[var(--text-muted)] truncate">{supabaseUser.email}</p>

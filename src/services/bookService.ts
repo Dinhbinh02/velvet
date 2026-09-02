@@ -104,7 +104,6 @@ export class BookService {
           percentage: 0,
           section_index: 0,
           chapter_title: '',
-          text_anchor: '',
           updated_at: now,
         });
       }
@@ -203,6 +202,7 @@ export class BookService {
       chapterTitle?: string;
       sectionHref?: string;
       textAnchor?: string;
+      anchorOffset?: number;
     }
   ): Promise<void> {
     const now = Date.now();
@@ -216,6 +216,7 @@ export class BookService {
         sectionIndex: progress.sectionIndex,
         sectionFraction: progress.sectionFraction,
         textAnchor: progress.textAnchor || existing?.textAnchor || '',
+        anchorOffset: typeof progress.anchorOffset === 'number' ? progress.anchorOffset : existing?.anchorOffset,
         chapterTitle: progress.chapterTitle,
         updatedAt: now,
       });

@@ -27,36 +27,52 @@ export class EPUBSummaryInjectorService {
    */
   static injectSummariesIntoDOM(
     workingDoc: Document,
-    summaries: IHeaderSummary[]
+    summaries: IHeaderSummary[],
+    allowFallback = false
   ): number {
-    if (!workingDoc || !workingDoc.body || !summaries || summaries.length === 0) return 0;
+    if (!workingDoc || !workingDoc.body || !summaries || summaries.length === 0) {
+      console.warn('[KeyInsights] Cannot inject: missing doc or empty summaries array.', { hasDoc: !!workingDoc, count: summaries?.length });
+      return 0;
+    }
+
+    console.groupCollapsed(`[KeyInsights] 💉 Injecting ${summaries.length} summaries into DOM (${workingDoc.title || 'EPUB Chapter'}, fallback: ${allowFallback})`);
 
     // 1. Remove any existing summary cards first to prevent duplicates
-    workingDoc.querySelectorAll('.velvet-chapter-summary-card, [class*="chapter-summary-card"]').forEach((el) => el.remove());
+    const removedCount = workingDoc.querySelectorAll('.velvet-chapter-summary-card, [class*="chapter-summary-card"], [data-velvet-ki="true"]').length;
+    workingDoc.querySelectorAll('.velvet-chapter-summary-card, [class*="chapter-summary-card"], [data-velvet-ki="true"]').forEach((el) => el.remove());
+    if (removedCount > 0) {
+      console.log(`[KeyInsights] Cleared ${removedCount} previous summary cards.`);
+    }
 
-    // 2. Find all headings and title candidate elements in workingDoc
+    // 2. Find all headings and candidate elements across all standard & custom EPUB tag styles
     const allHeadings = Array.from(
       workingDoc.querySelectorAll(
-        'h1, h2, h3, h4, h5, h6, [class*="heading"], [class*="title"], [class*="chapter-title"], [class*="subchapter"], [class*="header"]'
+        'h1, h2, h3, h4, h5, h6, [class*="heading"], [class*="title"], [class*="chapter"], [class*="subchapter"], [class*="header"], [class*="section"], [class*="subhead"]'
       )
     ).filter((el) => {
-      if (el.closest('figure, figcaption, [class*="caption"], [class*="footnote"]')) return false;
+      if (el.closest('figure, figcaption, [class*="caption"], [class*="footnote"], .velvet-chapter-summary-card')) return false;
       const txt = (el.textContent || '').trim();
       return txt.length > 0 && txt.length < 200;
     }) as HTMLElement[];
 
     const candidateHeaders = (
       Array.from(
-        workingDoc.querySelectorAll('p > strong:only-child, p > b:only-child, p.center, div.title, .section-title')
+        workingDoc.querySelectorAll(
+          'p > strong, p > b, p.center, div.title, .section-title, p[class*="bold"], div[class*="heading"], p[class*="head"]'
+        )
       ) as HTMLElement[]
-    ).filter((el) => !el.closest('figure, figcaption, [class*="caption"], [class*="footnote"]'));
+    ).filter((el) => !el.closest('figure, figcaption, [class*="caption"], [class*="footnote"], .velvet-chapter-summary-card'));
 
     const searchPool = [...allHeadings, ...candidateHeaders];
+    console.log(`[KeyInsights] Search pool: ${searchPool.length} candidate heading elements.`, searchPool.map(el => `<${el.tagName.toLowerCase()} class="${el.className}">: "${el.textContent?.trim().slice(0, 40)}"`));
 
     let insertedCount = 0;
 
-    summaries.forEach((s) => {
-      if (!s.header || !s.summary) return;
+    summaries.forEach((s, idx) => {
+      if (!s.header || !s.summary) {
+        console.warn(`[KeyInsights] Summary #${idx + 1} skipped (empty header/summary).`, s);
+        return;
+      }
 
       const rawHeader = s.header.trim();
       const cleanHeader = rawHeader.toLowerCase();
@@ -64,7 +80,7 @@ export class EPUBSummaryInjectorService {
 
       if (cleanHeader.length < 2) return;
 
-      // Match Strategy 1: Exact or substring match on raw text
+      // Match Strategy 1: Exact or substring match in searchPool
       let targetEl = searchPool.find((h) => {
         const hText = (h.textContent || '').trim().toLowerCase();
         return (
@@ -73,7 +89,7 @@ export class EPUBSummaryInjectorService {
         );
       });
 
-      // Match Strategy 2: Normalized heading match (handles "6 Building Pyramids" vs "Building Pyramids")
+      // Match Strategy 2: Normalized heading match in searchPool (handles numbering and punctuation differences)
       if (!targetEl && normHeader.length >= 3) {
         targetEl = searchPool.find((h) => {
           const hNorm = normalizeHeadingText(h.textContent || '');
@@ -84,8 +100,20 @@ export class EPUBSummaryInjectorService {
         });
       }
 
+      // Match Strategy 3: Loose search across all paragraphs/divs in the document body
+      if (!targetEl && normHeader.length >= 3) {
+        const allParagraphs = Array.from(workingDoc.body.querySelectorAll('p, div, span, b, strong, i, em')).filter(
+          (el) => !el.closest('.velvet-chapter-summary-card, figure, figcaption, [class*="footnote"]') && (el.textContent || '').trim().length < 120
+        ) as HTMLElement[];
+
+        targetEl = allParagraphs.find((p) => {
+          const pNorm = normalizeHeadingText(p.textContent || '');
+          return pNorm === normHeader || (pNorm.length >= 3 && (pNorm.includes(normHeader) || normHeader.includes(pNorm)));
+        });
+      }
+
       // If targetEl is just a number/label (e.g. <h1>7</h1>, <p class="num">7</p>, "Chapter 7")
-      // advance to the next sibling element (e.g. <h2>Memory Overload</h2>) so Key Insights is positioned after the full title!
+      // advance to next sibling element so Key Insights is positioned after the full title!
       if (targetEl && /^\s*(chapter\s*\d*|\d+|[ivxlcdm]+|ch\.\s*\d*)\s*$/i.test(targetEl.textContent || '')) {
         let next = targetEl.nextElementSibling as HTMLElement | null;
         while (next && (/^\s*$/i.test(next.textContent || '') || next.matches('br, hr'))) {
@@ -101,11 +129,18 @@ export class EPUBSummaryInjectorService {
         }
       }
 
+      // If target is inside a paragraph (e.g. <strong>Header</strong> inside <p>), insert after the parent <p>
+      if (targetEl && targetEl.parentElement && targetEl.parentElement.tagName.toLowerCase() === 'p' && targetEl.tagName.toLowerCase() !== 'p') {
+        targetEl = targetEl.parentElement;
+      }
+
       if (targetEl && targetEl.parentNode) {
+        console.log(`[KeyInsights] ✅ Matched header "${rawHeader}" to <${targetEl.tagName.toLowerCase()} class="${targetEl.className}">: "${targetEl.textContent?.trim().slice(0, 50)}"`);
+
         // Create velvet luxury summary card
         const card = workingDoc.createElement('div');
         card.className = 'velvet-chapter-summary-card';
-        card.setAttribute('data-velvet-ki', 'true'); // Marker for reliable removal
+        card.setAttribute('data-velvet-ki', 'true');
         card.setAttribute(
           'style',
           'margin: 18px 0 24px 0; padding: 16px 18px; border-radius: 12px; border-left: 3px solid currentColor; border-top: 1px solid currentColor; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; border-color: color-mix(in srgb, currentColor 18%, transparent); background-color: color-mix(in srgb, currentColor 4%, transparent); font-family: inherit; font-size: 0.95em; line-height: 1.6; color: inherit; box-sizing: border-box;'
@@ -130,8 +165,69 @@ export class EPUBSummaryInjectorService {
 
         targetEl.parentNode.insertBefore(card, targetEl.nextSibling);
         insertedCount++;
+      } else {
+        console.warn(`[KeyInsights] ❌ Could not find DOM element for header: "${rawHeader}" (norm: "${normHeader}")`);
       }
     });
+
+    // Strategy 4 (Fallback): If NO subheadings matched and allowFallback is true, insert first card at start of chapter
+    if (insertedCount === 0 && summaries.length > 0 && allowFallback) {
+      console.warn('[KeyInsights] No specific subheadings matched. Applying Chapter-Top Fallback insertion...');
+      let fallbackTarget =
+        workingDoc.body.querySelector('h1, h2, h3, [class*="title"], [class*="chapter"]') ||
+        workingDoc.body.firstElementChild;
+
+      // If fallback target is just a number (e.g. <h1>5</h1>) or "Chapter 5", advance to full title!
+      if (fallbackTarget && /^\s*(chapter\s*\d*|\d+|[ivxlcdm]+|ch\.\s*\d*)\s*$/i.test(fallbackTarget.textContent || '')) {
+        let next = fallbackTarget.nextElementSibling as HTMLElement | null;
+        while (next && (/^\s*$/i.test(next.textContent || '') || next.matches('br, hr'))) {
+          next = next.nextElementSibling as HTMLElement | null;
+        }
+        if (
+          next &&
+          (next.matches('h1, h2, h3, h4, h5, h6, [class*="title"], [class*="heading"], [class*="subchapter"], [class*="subtitle"], p, div') &&
+            (next.textContent || '').trim().length > 0 &&
+            (next.textContent || '').trim().length < 150)
+        ) {
+          fallbackTarget = next;
+        }
+      }
+
+      if (fallbackTarget && fallbackTarget.parentNode) {
+        const s = summaries[0];
+        const card = workingDoc.createElement('div');
+        card.className = 'velvet-chapter-summary-card';
+        card.setAttribute('data-velvet-ki', 'true');
+        card.setAttribute(
+          'style',
+          'margin: 18px 0 24px 0; padding: 16px 18px; border-radius: 12px; border-left: 3px solid currentColor; border-top: 1px solid currentColor; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; border-color: color-mix(in srgb, currentColor 18%, transparent); background-color: color-mix(in srgb, currentColor 4%, transparent); font-family: inherit; font-size: 0.95em; line-height: 1.6; color: inherit; box-sizing: border-box;'
+        );
+
+        const keyPointsHtml =
+          Array.isArray(s.keyPoints) && s.keyPoints.length > 0
+            ? `<ul style="margin: 12px 0 0 0; padding-left: 20px; list-style-type: disc; opacity: 0.92; line-height: 1.55;">
+                ${s.keyPoints.map((kp: string) => `<li style="margin-bottom: 6px;">${kp}</li>`).join('')}
+              </ul>`
+            : '';
+
+        card.innerHTML = `
+          <div style="font-weight: 700; font-size: 0.85em; letter-spacing: 0.05em; text-transform: uppercase; opacity: 0.75; margin-bottom: 8px;">
+            Key Insights
+          </div>
+          <div style="opacity: 0.95; font-size: 1em; line-height: 1.6;">
+            ${s.summary}
+          </div>
+          ${keyPointsHtml}
+        `;
+
+        fallbackTarget.parentNode.insertBefore(card, fallbackTarget.nextSibling);
+        insertedCount++;
+        console.log('[KeyInsights] ✅ Chapter-Top Fallback card inserted after:', fallbackTarget);
+      }
+    }
+
+    console.log(`[KeyInsights] 🏁 Injection complete. Total cards inserted: ${insertedCount}`);
+    console.groupEnd();
 
     return insertedCount;
   }

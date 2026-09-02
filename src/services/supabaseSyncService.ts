@@ -111,7 +111,7 @@ export class SupabaseSyncService {
               percentage: row.percentage,
               sectionIndex: row.section_index,
               chapterTitle: row.chapter_title,
-              textAnchor: row.text_anchor || '',
+              textAnchor: row.section_cfi_map?.text_anchor || '',
               updatedAt: row.updated_at,
             });
           }
@@ -350,7 +350,7 @@ export class SupabaseSyncService {
             percentage: p.percentage,
             sectionIndex: p.section_index,
             chapterTitle: p.chapter_title,
-            textAnchor: p.text_anchor || '',
+            textAnchor: p.section_cfi_map?.text_anchor || p.text_anchor || '',
             updatedAt: p.updated_at,
           }))
         );
@@ -544,7 +544,7 @@ export class SupabaseSyncService {
             percentage: p.percentage,
             section_index: p.sectionIndex,
             chapter_title: p.chapterTitle || '',
-            text_anchor: p.textAnchor || '',
+            section_cfi_map: { text_anchor: p.textAnchor || '' },
             updated_at: p.updatedAt || Date.now(),
           }))
         );

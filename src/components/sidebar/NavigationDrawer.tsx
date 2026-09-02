@@ -17,7 +17,7 @@ import {
   Check,
   Loader2,
 } from 'lucide-react';
-import type { INote, IComment, IReaderSettings } from '@/src/types/book';
+import type { INote, IComment, IReaderSettings, IHeaderSummary } from '@/src/types/book';
 import { NoteService } from '@/src/services/noteService';
 import { GeminiAIService } from '@/src/services/geminiAIService';
 import { SupabaseSyncService } from '@/src/services/supabaseSyncService';
@@ -34,6 +34,7 @@ interface TOCItemNodeProps {
   onNavigate: (cfiOrHref: string) => void;
   onClose: () => void;
   onOpenSettings?: () => void;
+  onOpenKeyInsights?: (chapterTitle: string, summaries: IHeaderSummary[], targetHref?: string) => void;
 }
 
 const TOCItemNode: React.FC<TOCItemNodeProps> = ({
@@ -47,6 +48,7 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
   onNavigate,
   onClose,
   onOpenSettings,
+  onOpenKeyInsights,
 }) => {
   const hasSubitems = Array.isArray(item.subitems) && item.subitems.length > 0;
   const [isOpen, setIsOpen] = useState(true);
@@ -81,6 +83,31 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
     e.stopPropagation();
     if (isGenerating) return;
 
+    const targetHref = (item.href || '').split('#')[0].replace(/^\.\//, '');
+    const chapterLabel = item.label || item.title || 'Chapter';
+
+    // 1. Check if summary already exists in Dexie DB
+    try {
+      const summaryRecordId = `${bookId || 'unknown'}_${targetHref || chapterLabel}`;
+      let existingRecord = await db.chapterSummaries.get(summaryRecordId);
+
+      if (!existingRecord && bookId) {
+        const allSummaries = await db.chapterSummaries.where('bookId').equals(bookId).toArray();
+        existingRecord = allSummaries.find(
+          (s) => s.href === targetHref || (s.chapterTitle && s.chapterTitle.trim().toLowerCase() === chapterLabel.trim().toLowerCase())
+        );
+      }
+
+      if (existingRecord && Array.isArray(existingRecord.summaries) && existingRecord.summaries.length > 0) {
+        console.log('[KeyInsights] 📖 Found existing summary in DB, opening modal popup:', existingRecord);
+        onOpenKeyInsights?.(chapterLabel, existingRecord.summaries, targetHref);
+        return;
+      }
+    } catch (dbCheckErr) {
+      console.warn('[KeyInsights] DB check error:', dbCheckErr);
+    }
+
+    // 2. If not generated, check API key
     if (!settings?.geminiApiKey?.trim()) {
       if (onOpenSettings) {
         onOpenSettings();
@@ -92,94 +119,83 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
     try {
       const viewEl = document.querySelector('foliate-view') as any;
       let sectionText = '';
-      const chapterLabel = item.label || item.title || 'Chapter';
-
       let bookTitle = '';
-      let bookAuthor = '';
 
-      // 1. Get accurate metadata from Dexie DB or Foliate
+      // Get accurate metadata from Dexie DB or Foliate
       if (bookId) {
-        try {
-          const dbBook = await db.books.get(bookId);
-          if (dbBook) {
-            bookTitle = dbBook.title || '';
-            bookAuthor = dbBook.author || '';
-          }
-        } catch {}
+        const bookMeta = await db.books.get(bookId);
+        if (bookMeta) {
+          bookTitle = bookMeta.title || '';
+        }
+      }
+      if (!bookTitle && viewEl?.book?.metadata) {
+        bookTitle = viewEl.book.metadata.title || '';
       }
 
-      const targetHref = item.href || item.cfi || '';
+      // Extract section text
+      if (viewEl?.book?.sections && Array.isArray(viewEl.book.sections)) {
+        let sec = viewEl.book.sections.find((s: any) => {
+          if (!s?.href) return false;
+          const cleanA = s.href.split('#')[0].replace(/^\.\//, '');
+          return cleanA === targetHref || s.href.includes(targetHref) || targetHref.includes(s.href);
+        });
 
-      if (viewEl?.book) {
-        const book = viewEl.book;
-        const metadata = book.metadata || {};
-
-        if (!bookTitle) {
-          bookTitle = typeof metadata.title === 'string' ? metadata.title : metadata.title?.name || '';
-        }
-        if (!bookAuthor) {
-          const rawAuthor = metadata.author || metadata.creator;
-          if (typeof rawAuthor === 'string') {
-            bookAuthor = rawAuthor;
-          } else if (Array.isArray(rawAuthor)) {
-            bookAuthor = rawAuthor.map((a) => (typeof a === 'string' ? a : a?.name || '')).filter(Boolean).join(', ');
-          } else if (typeof rawAuthor === 'object' && rawAuthor !== null) {
-            bookAuthor = rawAuthor.name || rawAuthor.value || '';
-          }
-        }
-
-        // 2. Extract section text directly from Foliate book parser
-        if (targetHref && typeof book.resolveHref === 'function' && Array.isArray(book.sections)) {
-          const resolved = book.resolveHref(targetHref);
-          const targetIndex = resolved?.index ?? (typeof resolved === 'number' ? resolved : undefined);
-
-          let targetSection: any = null;
-          if (typeof targetIndex === 'number' && book.sections[targetIndex]) {
-            targetSection = book.sections[targetIndex];
-          } else if (resolved?.id) {
-            targetSection = book.sections.find((s: any) => s.id === resolved.id || s.href === targetHref || targetHref.includes(s.id));
-          } else {
-            const cleanHref = targetHref.split('#')[0];
-            targetSection = book.sections.find((s: any) => s.href === cleanHref || s.href === targetHref || s.id === cleanHref);
-          }
-
-          if (targetSection) {
-            try {
-              if (typeof targetSection.createDocument === 'function') {
-                const doc = await targetSection.createDocument();
-                sectionText = (doc?.body?.innerText || doc?.body?.textContent || '').trim();
-              } else if (typeof targetSection.load === 'function') {
-                const doc = await targetSection.load();
-                sectionText = (doc?.body?.innerText || doc?.body?.textContent || '').trim();
-              } else if (typeof targetSection.getText === 'function') {
-                sectionText = await targetSection.getText();
-              }
-            } catch (secErr) {
-              console.warn('Error loading target section document:', secErr);
+        if (!sec && item.cfi) {
+          const spineMatch = item.cfi.match(/\/6\/(\d+)/);
+          if (spineMatch) {
+            const spineIdx = Math.floor((parseInt(spineMatch[1], 10) - 2) / 2);
+            if (spineIdx >= 0 && spineIdx < viewEl.book.sections.length) {
+              sec = viewEl.book.sections[spineIdx];
             }
           }
         }
 
-        // 3. Fallback to active document innerText in renderer shadowRoot if not loaded directly
-        if (!sectionText) {
-          const activeIframe = viewEl?.renderer?.shadowRoot?.querySelector('iframe') || viewEl?.shadowRoot?.querySelector('iframe') || document.querySelector('foliate-view')?.shadowRoot?.querySelector('iframe');
-          const activeDoc = activeIframe?.contentDocument;
-          if (activeDoc?.body) {
-            sectionText = (activeDoc.body.innerText || activeDoc.body.textContent || '').trim();
+        if (sec && typeof sec.createDocument === 'function') {
+          try {
+            const doc = await sec.createDocument();
+            sectionText = doc.body?.innerText || doc.body?.textContent || '';
+          } catch (secDocErr) {
+            console.warn('[KeyInsights] sec.createDocument error:', secDocErr);
+          }
+        } else if (sec && typeof sec.load === 'function') {
+          try {
+            const loaded = await sec.load();
+            if (loaded instanceof Document) {
+              sectionText = loaded.body?.innerText || loaded.body?.textContent || '';
+            } else if (typeof loaded === 'string') {
+              const parser = new DOMParser();
+              const parsedDoc = parser.parseFromString(loaded, 'text/html');
+              sectionText = parsedDoc.body?.innerText || parsedDoc.body?.textContent || '';
+            }
+          } catch (secLoadErr) {
+            console.warn('[KeyInsights] sec.load error:', secLoadErr);
           }
         }
       }
 
-      if (!sectionText) {
-        alert('Could not extract chapter text. Please navigate to this chapter first.');
-        setIsGenerating(false);
-        return;
+      // Fallback to active document if text wasn't loaded from section
+      if (!sectionText.trim()) {
+        const activeIframe =
+          viewEl?.renderer?.shadowRoot?.querySelector('iframe') ||
+          viewEl?.shadowRoot?.querySelector('iframe') ||
+          document.querySelector('foliate-view')?.shadowRoot?.querySelector('iframe');
+        const activeDoc = activeIframe?.contentDocument;
+        if (activeDoc && activeDoc.body) {
+          sectionText = activeDoc.body.innerText || activeDoc.body.textContent || '';
+        }
       }
 
-      // Clean out previous "KEY INSIGHTS" blocks from extracted text if regenerating
+      if (!sectionText || sectionText.trim().length < 50) {
+        throw new Error(`Could not load text content for chapter "${chapterLabel}".`);
+      }
+
       const cleanSectionText = sectionText
         .replace(/KEY INSIGHTS[\s\S]*?(?=(?:Chapter|\n\s*\n[A-Z]|$))/gi, '')
         .trim() || sectionText;
+
+      console.group(`[KeyInsights] 🌟 Generating Key Insights for "${chapterLabel}"`);
+      console.log('Chapter Target Href:', targetHref);
+      console.log('Extracted section text length:', cleanSectionText.length);
 
       // Generate structured summaries by headers with Gemini AI
       const summaries = await GeminiAIService.summarizeChapterByHeaders(
@@ -188,6 +204,8 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
         bookTitle,
         settings?.geminiApiKey
       );
+
+      console.log('[KeyInsights] Gemini AI returned summaries:', summaries);
 
       if (summaries.length === 0) {
         throw new Error('No summaries generated.');
@@ -204,34 +222,22 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
+      console.log('[KeyInsights] ✅ Saved to IndexedDB (Dexie) with id:', summaryRecordId);
 
-      // 2. Inject summaries live into the active chapter DOM
-      try {
-        const activeIframe =
-          viewEl?.renderer?.shadowRoot?.querySelector('iframe') ||
-          viewEl?.shadowRoot?.querySelector('iframe') ||
-          document.querySelector('foliate-view')?.shadowRoot?.querySelector('iframe');
-        const activeDoc = activeIframe?.contentDocument;
-        if (activeDoc) {
-          const { EPUBSummaryInjectorService } = await import('@/src/services/epubSummaryInjectorService');
-          EPUBSummaryInjectorService.injectSummariesIntoDOM(activeDoc, summaries);
-        }
-      } catch (domErr) {
-        console.warn('Live DOM injection error:', domErr);
-      }
-
-      // 3. Dispatch update event for reader and other components
-      window.dispatchEvent(new CustomEvent('velvet:summaries-updated', { detail: { bookId, href: targetHref } }));
-
-      // 4. Trigger background cloud sync
+      // 2. Trigger background cloud sync
       if (bookId) {
         SupabaseSyncService.triggerAutoSync(3000);
       }
 
       setHasGenerated(true);
       setTimeout(() => setHasGenerated(false), 3000);
+      console.groupEnd();
+
+      // 3. Open Key Insights Modal Popup immediately
+      onOpenKeyInsights?.(chapterLabel, summaries, targetHref);
     } catch (err: any) {
-      console.error('Failed to generate AI Chapter Summary:', err);
+      console.error('[KeyInsights] ❌ Failed to generate AI Chapter Summary:', err);
+      console.groupEnd();
       alert(err.message || 'Failed to generate chapter summary. Please check your Gemini API key in settings.');
     } finally {
       setIsGenerating(false);
@@ -337,6 +343,7 @@ const TOCItemNode: React.FC<TOCItemNodeProps> = ({
               onNavigate={onNavigate}
               onClose={onClose}
               onOpenSettings={onOpenSettings}
+              onOpenKeyInsights={onOpenKeyInsights}
             />
           ))}
         </div>
@@ -358,6 +365,7 @@ interface NavigationDrawerProps {
   onExportNotes?: () => void;
   onClose: () => void;
   onOpenSettings?: () => void;
+  onOpenKeyInsights?: (chapterTitle: string, summaries: IHeaderSummary[], targetHref?: string) => void;
 }
 
 export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
@@ -373,6 +381,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   onExportNotes,
   onClose,
   onOpenSettings,
+  onOpenKeyInsights,
 }) => {
   const [activeTab, setActiveTab] = useState<'toc' | 'notes' | 'comments'>('toc');
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
@@ -631,6 +640,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
                   onNavigate={onNavigate}
                   onClose={onClose}
                   onOpenSettings={onOpenSettings}
+                  onOpenKeyInsights={onOpenKeyInsights}
                 />
               ))
             ) : (

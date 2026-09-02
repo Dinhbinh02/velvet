@@ -22,6 +22,7 @@ export interface ISupabaseConfig {
 export class SupabaseService {
   private static client: SupabaseClient | null = null;
   private static cachedConfig: ISupabaseConfig | null = null;
+  private static initPromise: Promise<SupabaseClient | null> | null = null;
 
   /**
    * Get configured Supabase URL & Anon Key
@@ -46,6 +47,7 @@ export class SupabaseService {
   public static async saveConfig(url: string, anonKey: string): Promise<void> {
     this.cachedConfig = { url: url.trim(), anonKey: anonKey.trim() };
     this.client = null; // reset client
+    this.initPromise = null;
 
     localStorage.setItem(STORAGE_KEY_SUPABASE_URL, this.cachedConfig.url);
     localStorage.setItem(STORAGE_KEY_SUPABASE_ANON_KEY, this.cachedConfig.anonKey);
@@ -56,19 +58,26 @@ export class SupabaseService {
    */
   public static async getClient(): Promise<SupabaseClient | null> {
     if (this.client) return this.client;
+    if (this.initPromise) return this.initPromise;
 
-    const config = await this.getConfig();
-    if (!config) return null;
+    this.initPromise = (async () => {
+      const config = await this.getConfig();
+      if (!config) return null;
 
-    this.client = createClient(config.url, config.anonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-      },
-    });
+      if (!this.client) {
+        this.client = createClient(config.url, config.anonKey, {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true,
+          },
+        });
+      }
 
-    return this.client;
+      return this.client;
+    })();
+
+    return this.initPromise;
   }
 
   /**

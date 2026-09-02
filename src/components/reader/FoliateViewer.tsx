@@ -787,16 +787,26 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
     container.appendChild(view);
     viewRef.current = view;
 
+    const isInitialNavigationDoneRef = { current: false };
+
     async function init() {
       try {
         const file = await BookService.getBookFile(bookId);
         if (!isMounted) return;
 
-        // Apply initial renderer attributes before or immediately after opening
+        // Fetch saved reading progress from Dexie FIRST before opening view
+        const savedProgress = await db.progress.get(bookId);
+        console.group(`[Reader Init] 📚 Opening book "${bookId}"`);
+        console.log('Saved Progress from DB:', savedProgress);
+
+        // Apply initial renderer attributes before opening
         applySettingsToRenderer();
 
         await view.open(file);
-        if (!isMounted) return;
+        if (!isMounted) {
+          console.groupEnd();
+          return;
+        }
 
         // Re-apply styles and layout to ensure renderer layout is properly initialized
         applySettingsToRenderer();
@@ -823,44 +833,38 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
           onTOCLoaded?.(view.book.toc);
         }
 
-        // Get saved progress from Dexie
-        const progress = await db.progress.get(bookId);
-        let navigated = false;
-
-        // Safe Section + Fraction navigation (100% immune to CFI IndexSizeError)
-        const targetSection =
-          typeof progress?.sectionIndex === 'number' && progress.sectionIndex >= 0 ? progress.sectionIndex : 0;
-        const fraction = typeof progress?.sectionFraction === 'number' ? progress.sectionFraction : 0;
-
-        try {
-          if (fraction > 0) {
-            await view.goTo({ section: targetSection, fraction });
-          } else {
-            await view.goTo(targetSection);
+        // Navigate directly via CFI if available, or fallback to sectionHref / sectionIndex
+        if (savedProgress?.cfi) {
+          console.log('[Reader Init] 🎯 Navigating via CFI:', savedProgress.cfi);
+          try {
+            await view.goTo(savedProgress.cfi);
+          } catch (cfiErr) {
+            console.warn('[Reader Init] CFI navigation failed, trying section fallback:', cfiErr);
+            const target = savedProgress?.sectionHref || (typeof savedProgress?.sectionIndex === 'number' ? savedProgress.sectionIndex : 0);
+            try {
+              await view.goTo(target);
+            } catch {}
           }
-          navigated = true;
-        } catch (navErr) {
+        } else {
+          const target = savedProgress?.sectionHref || (typeof savedProgress?.sectionIndex === 'number' ? savedProgress.sectionIndex : 0);
+          console.log('[Reader Init] 🎯 Navigating view.goTo target:', target);
           try {
-            await view.goTo(targetSection);
-            navigated = true;
-          } catch {}
-        }
-
-        // Fallback: initialize view or go to start
-        if (!navigated) {
-          try {
-            if (typeof view.init === 'function') {
-              await view.init();
-            } else {
-              await view.goTo(0);
-            }
-          } catch (e) {
-            console.warn('Initial view navigation fallback:', e);
+            await view.goTo(target);
+          } catch (navErr) {
+            console.warn('[Reader Init] Navigation to target failed, trying fallback index 0:', navErr);
             try {
               await view.goTo(0);
             } catch {}
           }
         }
+
+        console.groupEnd();
+
+        // Allow layout to stabilize before enabling relocate auto-saving
+        setTimeout(() => {
+          isInitialNavigationDoneRef.current = true;
+          console.log('[Reader Init] ✅ Initial navigation complete, progress autosave enabled.');
+        }, 600);
 
         // Fallback safety: ensure loading state clears even if load event is delayed
         setTimeout(() => {
@@ -878,9 +882,20 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
     view.addEventListener('relocate', ({ detail }: any) => {
       const cfi = detail.cfi;
       const sectionFraction = typeof detail.fraction === 'number' ? detail.fraction : 0;
-      const sectionIndex = detail.index || 0;
       const chapterTitle = detail.tocItem?.label?.trim() || undefined;
       const sectionHref = detail.tocItem?.href || undefined;
+
+      // Resolve true section index in book spine
+      let sectionIndex = detail.index || 0;
+      if (view.book?.sections && Array.isArray(view.book.sections) && sectionHref) {
+        const found = view.book.sections.findIndex((s: any) => {
+          if (!s?.href) return false;
+          const cleanS = s.href.split('#')[0].replace(/^\.\//, '');
+          const cleanTarget = sectionHref.split('#')[0].replace(/^\.\//, '');
+          return cleanS === cleanTarget || cleanTarget.endsWith(cleanS) || cleanS.endsWith(cleanTarget);
+        });
+        if (found !== -1) sectionIndex = found;
+      }
 
       currentSectionIndexRef.current = sectionIndex;
 
@@ -932,28 +947,11 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
 
       onLocationChange?.({ cfi, percentage: sectionFraction, chapterTitle, sectionIndex, sectionHref });
 
-      // Extract visible text anchor in current viewport (skipping summaries and headers)
-      let textAnchor = '';
-      const activeDoc = currentDocRef.current;
-      if (activeDoc && activeDoc.body) {
-        try {
-          const walker = activeDoc.createTreeWalker(activeDoc.body, NodeFilter.SHOW_TEXT);
-          let node;
-          const viewportHeight = activeDoc.defaultView?.innerHeight || window.innerHeight;
-          while ((node = walker.nextNode())) {
-            const txt = (node.textContent || '').trim();
-            if (txt.length >= 15 && !node.parentElement?.closest('.velvet-chapter-summary-card')) {
-              const range = activeDoc.createRange();
-              range.selectNodeContents(node);
-              const rect = range.getBoundingClientRect();
-              if (rect.bottom > 0 && rect.top < viewportHeight) {
-                textAnchor = txt.slice(0, 70);
-                break;
-              }
-            }
-          }
-        } catch {}
+      if (!isInitialNavigationDoneRef.current) {
+        return;
       }
+
+      console.log('[Reader Relocate] 💾 Saving progress via native CFI:', { cfi, sectionFraction, sectionIndex, sectionHref });
 
       // Debounce saving progress to Dexie
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -965,7 +963,6 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
           sectionFraction,
           chapterTitle,
           sectionHref,
-          textAnchor: textAnchor || '',
         });
       }, 300);
     });
@@ -1065,6 +1062,7 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
       const restoreComments = async () => {
         try {
           const comments = await db.comments.where('bookId').equals(bookId).toArray();
+
           if (comments.length === 0) return;
 
           const docWin = doc.defaultView || window;
@@ -1124,64 +1122,9 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
       };
       restoreComments();
 
-      // Inject Key Insights / Chapter Summaries from Dexie into rendered chapter DOM
-      const restoreSummaries = async () => {
-        if (!bookId) return;
-        try {
-          const summariesList = await db.chapterSummaries.where('bookId').equals(bookId).toArray();
-          if (summariesList && summariesList.length > 0) {
-            const { EPUBSummaryInjectorService } = await import('@/src/services/epubSummaryInjectorService');
-            let injectedCount = 0;
-            for (const s of summariesList) {
-              if (Array.isArray(s.summaries) && s.summaries.length > 0) {
-                injectedCount += EPUBSummaryInjectorService.injectSummariesIntoDOM(doc, s.summaries);
-              }
-            }
-
-            if (injectedCount > 0) {
-              // 1. Force Foliate layout engine to account for the newly inserted summary card
-              try {
-                const foliateEl = document.querySelector('foliate-view') as any;
-                const renderer = foliateEl?.renderer || (viewRef.current as any)?.renderer;
-                if (renderer) {
-                  if (typeof renderer.onResize === 'function') renderer.onResize();
-                  else if (typeof renderer.render === 'function') renderer.render();
-                }
-                doc.defaultView?.dispatchEvent(new Event('resize'));
-              } catch {}
-            }
-          }
-        } catch (err) {
-          console.warn('Could not restore chapter summaries into DOM:', err);
-        }
-      };
-      await restoreSummaries();
-
-      // Align view to exact textAnchor so neither summary cards nor layout shifts disrupt reading position
-      try {
-        const progress = await db.progress.get(bookId);
-        if (progress?.textAnchor && progress.textAnchor.trim().length >= 15) {
-          const anchorSnippet = progress.textAnchor.trim().slice(0, 40).toLowerCase();
-          const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
-          let node: Node | null;
-          while ((node = walker.nextNode())) {
-            const txt = (node.textContent || '').toLowerCase();
-            if (txt.includes(anchorSnippet) && !node.parentElement?.closest('.velvet-chapter-summary-card')) {
-              const targetEl = node.parentElement;
-              if (targetEl) {
-                targetEl.scrollIntoView({ behavior: 'instant', block: 'start' });
-                break;
-              }
-            }
-          }
-        }
-      } catch (anchorErr) {
-        console.warn('Text anchor alignment skipped:', anchorErr);
-      } finally {
-        // Clear loader smoothly once layout and textAnchor positioning are 100% stabilized
-        if (isMounted) {
-          setIsLoading(false);
-        }
+      // Clear loader smoothly once layout is stabilized
+      if (isMounted) {
+        setIsLoading(false);
       }
 
       // Extract readable sentences for TTS playback and attach click listener
@@ -2115,6 +2058,7 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
   // Listen for live Key Insights updates and inject immediately into active chapter DOM
   useEffect(() => {
     const handleSummariesUpdated = async () => {
+      console.log('[KeyInsights] 🔔 Received velvet:summaries-updated event.');
       const foliateEl = document.querySelector('foliate-view') as any;
       const iframe =
         foliateEl?.renderer?.shadowRoot?.querySelector('iframe') ||
@@ -2125,14 +2069,56 @@ export const FoliateViewer: React.FC<FoliateViewerProps & { ref?: React.Ref<Foli
       if (activeDoc && bookId) {
         try {
           const summariesList = await db.chapterSummaries.where('bookId').equals(bookId).toArray();
+          console.log('[KeyInsights] Fetched DB summaries for active book:', summariesList);
           if (summariesList && summariesList.length > 0) {
             const { EPUBSummaryInjectorService } = await import('@/src/services/epubSummaryInjectorService');
-            let injectedCount = 0;
-            for (const s of summariesList) {
-              if (Array.isArray(s.summaries) && s.summaries.length > 0) {
-                injectedCount += EPUBSummaryInjectorService.injectSummariesIntoDOM(activeDoc, s.summaries);
-              }
+
+            const sectionIdx = currentSectionIndexRef.current;
+            const currentSection = (foliateEl?.book || viewRef.current?.book)?.sections?.[sectionIdx];
+            const currentHref = (currentSection?.href || '').split('#')[0].replace(/^\.\//, '');
+            const currentId = currentSection?.id || '';
+
+            // Extract all heading texts from the active document
+            const docHeadings = Array.from(
+              activeDoc.querySelectorAll('h1, h2, h3, h4, h5, h6, [class*="heading"], [class*="title"], [class*="chapter"], [class*="subchapter"], [class*="header"], [class*="section"]')
+            ).map((el: any) => (el.textContent || '').trim().toLowerCase()).filter(Boolean);
+
+            const cleanCurrentHref = currentHref.split('#')[0].replace(/^\.\//, '').replace(/^.*[\\\/]/, '').toLowerCase();
+
+            // Tier 1: Match by heading content (STRONGEST & MOST ACCURATE)
+            let matchedRecord = summariesList.find((s) => {
+              if (!Array.isArray(s.summaries) || s.summaries.length === 0) return false;
+              return s.summaries.some((item: any) => {
+                if (!item.header) return false;
+                const cleanH = item.header.trim().toLowerCase();
+                return docHeadings.some((dh) => dh === cleanH || (cleanH.length >= 4 && (dh.includes(cleanH) || cleanH.includes(dh))));
+              });
+            });
+
+            // Tier 2: Match by file href or id
+            if (!matchedRecord && cleanCurrentHref) {
+              matchedRecord = summariesList.find((s) => {
+                if (!s.href) return false;
+                const cleanS = s.href.split('#')[0].replace(/^\.\//, '').replace(/^.*[\\\/]/, '').toLowerCase();
+                return cleanS === cleanCurrentHref || (currentId && s.href.includes(currentId));
+              });
             }
+
+            // Tier 3: Match by chapter title
+            if (!matchedRecord) {
+              matchedRecord = summariesList.find((s) => {
+                if (!s.chapterTitle) return false;
+                const cleanTitle = s.chapterTitle.trim().toLowerCase();
+                return docHeadings.some((dh) => dh === cleanTitle || cleanTitle.includes(dh));
+              });
+            }
+
+            let injectedCount = 0;
+            if (matchedRecord && Array.isArray(matchedRecord.summaries) && matchedRecord.summaries.length > 0) {
+              injectedCount = EPUBSummaryInjectorService.injectSummariesIntoDOM(activeDoc, matchedRecord.summaries, true);
+            }
+
+            console.log('[KeyInsights] Total live injected cards into active doc:', injectedCount);
 
             if (injectedCount > 0) {
               // 1. Force Foliate layout engine to re-calculate pagination for the new card

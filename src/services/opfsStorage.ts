@@ -59,8 +59,10 @@ export class OPFSStorageService {
       const booksDir = await this.getBooksDirectory();
       const fileName = `${bookId}.epub`;
       await booksDir.removeEntry(fileName);
-    } catch (err) {
-      console.warn(`Could not delete file for book ${bookId} in OPFS:`, err);
+    } catch (err: any) {
+      if (err?.name !== 'NotFoundError') {
+        console.warn(`Could not delete file for book ${bookId} in OPFS:`, err);
+      }
     }
   }
 
